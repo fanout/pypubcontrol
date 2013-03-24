@@ -5,6 +5,11 @@ Author: Justin Karneges <justin@fanout.io>
 
 EPCP library for Python.
 
+Requirements:
+
+  pyjwt
+  pyzmq
+
 Sample usage:
 
   from pubcontrol import PubControl, Item, Format
@@ -23,3 +28,6 @@ Sample usage:
       return {"body": self.body}
 
   pub.publish("mychannel", Item(HttpResponseFormat("stuff\n")))
+
+  # publish requests are queued. call finish() to sync until processed.
+  pub.finish()
