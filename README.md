@@ -1,4 +1,0 @@
-pypubcontrol
-============
-
-Python EPCP library

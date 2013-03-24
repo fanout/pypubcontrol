@@ -1,0 +1,23 @@
+PyPubControl
+------------
+Date: March 24th, 2013
+Author: Justin Karneges <justin@fanout.io>
+
+EPCP library for Python.
+
+Sample usage:
+
+  from pubcontrol import PubControl, Item, Format
+
+  pub = PubControl()
+  pub.uri = "https://api.fanout.io/realm/myrealm"
+  pub.realm = "myrealm"
+  pub.secret = "secret"
+
+  class HttpResponseFormat(Format):
+    def __init__(self, body):
+      self.body = body
+    def to_json(self):
+      return {"body": self.body}
+
+  pub.publish("mychannel", Item(HttpResponseFormat("stuff\n")))
