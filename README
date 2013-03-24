@@ -17,7 +17,9 @@ Sample usage:
   class HttpResponseFormat(Format):
     def __init__(self, body):
       self.body = body
-    def to_json(self):
+    def name(self):
+      return "http-response"
+    def export(self):
       return {"body": self.body}
 
   pub.publish("mychannel", Item(HttpResponseFormat("stuff\n")))

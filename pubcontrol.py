@@ -92,7 +92,7 @@ class Format(object):
 	def name(self):
 		pass
 
-	def to_json(self):
+	def export(self):
 		pass
 
 class Item(object):
@@ -103,14 +103,14 @@ class Item(object):
 			formats = [formats]
 		self.formats = formats
 
-	def to_json(self):
+	def export(self):
 		out = dict()
 		if self.id:
 			out["id"] = self.id
 		if self.prev_id:
 			out["prev-id"] = self.prev_id
 		for f in self.formats:
-			out[f.name()] = f.to_json()
+			out[f.name()] = f.export()
 		return out
 
 class PubControl(object):
@@ -134,7 +134,7 @@ class PubControl(object):
 			self.pubsock = g_ctx.socket(zmq.PUB)
 			self.pubsock.connect("inproc://publish-%d" % self.pubsockid)
 
-		self.pubsock.send(pickle.dumps((uri, realm, secret, channel, item.to_json())))
+		self.pubsock.send(pickle.dumps((uri, realm, secret, channel, item.export())))
 
 	def publish(self, channel, item):
 		assert(self.uri)
