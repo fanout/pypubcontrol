@@ -14,10 +14,8 @@ Sample usage:
 
   from pubcontrol import PubControl, Item, Format
 
-  pub = PubControl()
-  pub.uri = "https://api.fanout.io/realm/myrealm"
-  pub.realm = "myrealm"
-  pub.secret = "secret"
+  pub = PubControl("https://api.fanout.io/realm/myrealm")
+  pub.set_auth_jwt({"iss": realm_name}, b64decode(realm_key))
 
   class HttpResponseFormat(Format):
     def __init__(self, body):
@@ -28,6 +26,3 @@ Sample usage:
       return {"body": self.body}
 
   pub.publish("mychannel", Item(HttpResponseFormat("stuff\n")))
-
-  # publish requests are queued. call finish() to sync until processed.
-  pub.finish()

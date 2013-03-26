@@ -1,5 +1,7 @@
 import time
+import copy
 import json
+from base64 import b64encode
 import urllib2
 import threading
 import pickle
@@ -33,104 +35,65 @@ class Item(object):
 			out[f.name()] = f.export()
 		return out
 
-def _make_token(realm, secret):
-	claim = dict()
-	claim["iss"] = realm
-	claim["exp"] = int(time.time()) + 600
-	return jwt.encode(claim, secret)
-
-def _pubcall(uri, realm, secret, channel, items):
-	uri = uri + "/publish/" + channel + "/"
-
-	headers = dict()
-	if realm:
-		headers["Authorization"] = "Bearer %s" % _make_token(realm, secret)
-	headers["Content-Type"] = "application/json"
-
-	content = dict()
-	content["items"] = items
-	content_raw = json.dumps(content)
-	if isinstance(content_raw, unicode):
-		content_raw = content_raw.encode("utf-8")
-
-	try:
-		urllib2.urlopen(urllib2.Request(uri, content_raw, headers))
-	except Exception as e:
-		print "warning: failed to publish: " + repr(e.read())
-
-def _pubbatch(reqs):
-	assert(len(reqs) > 0)
-	uri = reqs[0][1]
-	realm = reqs[0][2]
-	secret = reqs[0][3]
-	channel = reqs[0][4]
-	items = list()
-	for req in reqs:
-		items.append(req[5])
-	_pubcall(uri, realm, secret, channel, items)
-
-def _pubworker(cond, sockid):
-	sock = g_ctx.socket(zmq.SUB)
-	sock.setsockopt(zmq.SUBSCRIBE, "")
-	sock.bind("inproc://publish-%d" % sockid)
-	cond.acquire()
-	cond.notify()
-	cond.release()
-
-	quit = False
-	while not quit:
-		# block until a request is ready, then read many if possible
-		buf = sock.recv()
-		m = pickle.loads(buf)
-
-		if m[0] == "stop":
-			break
-
-		reqs = list()
-		reqs.append(m)
-
-		for n in range(0, 99):
-			try:
-				buf = sock.recv(zmq.NOBLOCK)
-			except zmq.ZMQError as e:
-				if e.errno == zmq.EAGAIN:
-					break
-
-			m = pickle.loads(buf)
-			if m[0] == "stop":
-				quit = True
-				break
-
-			reqs.append(m)
-
-		# batch reqs by same realm/channel
-		batch = list()
-		for req in reqs:
-			if len(batch) > 0:
-				last = batch[-1]
-				if req[1] != last[1] or req[2] != last[2] or req[3] != last[3] or req[4] != last[4]:
-					_pubbatch(batch)
-					batch = list()
-
-			batch.append(req)
-
-		if len(batch) > 0:
-			_pubbatch(batch)
-
 class PubControl(object):
-	def __init__(self):
-		self.uri = None
-		self.realm = None
-		self.secret = None
+	def __init__(self, uri):
+		self.uri = uri
 		self.thread = None
 		self.sockid = id(self)
 		self.sock = None
+		self.auth_basic_user = None
+		self.auth_basic_pass = None
+		self.auth_jwt_claim = None
+		self.auth_jwt_key = None
 
-	def _queue_publish(self, uri, realm, secret, channel, item):
+	def set_auth_basic(self, username, password):
+		self.auth_basic_user = username
+		self.auth_basic_pass = password
+
+	def set_auth_jwt(self, claim, key):
+		self.auth_jwt_claim = claim
+		self.auth_jwt_key = key
+
+	def publish(self, channel, item):
+		i = item.export()
+		i["channel"] = channel
+		PubControl._pubcall(self.uri, self._gen_auth_header(), [i])
+
+	# callback: func(boolean success, string message)
+	# note: callback occurs in separate thread
+	def publish_async(self, channel, item, callback=None):
+		self._ensure_thread()
+		i = item.export()
+		i["channel"] = channel
+		self.sock.send(pickle.dumps(("pub", self.uri, self._gen_auth_header(), i, callback)))
+
+	def finish(self):
+		if self.thread:
+			self.sock.send(pickle.dumps(("stop",)))
+			self.thread.join()
+			self.thread = None
+			self.sock.linger = 0
+			self.sock.close()
+			self.sock = None
+
+	def _gen_auth_header(self):
+		if self.auth_basic_user:
+			return b64encode("Basic %s:%s" % (self.auth_basic_user, self.auth_basic_pass))
+		elif self.auth_jwt_claim:
+			if "exp" not in self.auth_jwt_claim:
+				claim = copy.copy(self.auth_jwt_claim)
+				claim["exp"] = int(time.time()) + 600
+			else:
+				claim = self.auth_jwt_claim
+			return "Bearer %s" % jwt.encode(claim, self.auth_jwt_key)
+		else:
+			return None
+
+	def _ensure_thread(self):
 		if self.thread is None:
 			cond = threading.Condition()
 			cond.acquire()
-			self.thread = threading.Thread(target=_pubworker, args=(cond, self.sockid))
+			self.thread = threading.Thread(target=PubControl._pubworker, args=(cond, self.sockid))
 			self.thread.daemon = True
 			self.thread.start()
 			cond.wait()
@@ -138,16 +101,85 @@ class PubControl(object):
 			self.sock = g_ctx.socket(zmq.PUB)
 			self.sock.connect("inproc://publish-%d" % self.sockid)
 
-		self.sock.send(pickle.dumps(("item", uri, realm, secret, channel, item.export())))
+	@staticmethod
+	def _pubcall(uri, auth_header, items):
+		uri = uri + "/publish/"
 
-	def publish(self, channel, item):
-		assert(self.uri)
-		self._queue_publish(self.uri, self.realm, self.secret, channel, item)
+		headers = dict()
+		if auth_header:
+			headers["Authorization"] = auth_header
+		headers["Content-Type"] = "application/json"
 
-	def finish(self):
-		self.sock.send(pickle.dumps(("stop",)))
-		self.thread.join()
-		self.thread = None
-		self.sock.linger = 0
-		self.sock.close()
-		self.sock = None
+		content = dict()
+		content["items"] = items
+		content_raw = json.dumps(content)
+		if isinstance(content_raw, unicode):
+			content_raw = content_raw.encode("utf-8")
+
+		try:
+			urllib2.urlopen(urllib2.Request(uri, content_raw, headers))
+		except Exception as e:
+			raise ValueError("failed to publish: " + repr(e.read()))
+
+	# reqs: list of (uri, auth_header, item, callback)
+	@staticmethod
+	def _pubbatch(reqs):
+		assert(len(reqs) > 0)
+		uri = reqs[0][0]
+		auth_header = reqs[0][1]
+		items = list()
+		callbacks = list()
+		for req in reqs:
+			items.append(req[2])
+			callbacks.append(req[3])
+
+		try:
+			PubControl._pubcall(uri, auth_header, items)
+			result = (True, "")
+		except Exception as e:
+			result = (False, e.message)
+
+		for c in callbacks:
+			if c:
+				c(result[0], result[1])
+
+	@staticmethod
+	def _pubworker(cond, sockid):
+		sock = g_ctx.socket(zmq.SUB)
+		sock.setsockopt(zmq.SUBSCRIBE, "")
+		sock.bind("inproc://publish-%d" % sockid)
+		cond.acquire()
+		cond.notify()
+		cond.release()
+
+		quit = False
+		while not quit:
+			# block until a request is ready, then read many if possible
+			buf = sock.recv()
+			m = pickle.loads(buf)
+
+			if m[0] == "stop":
+				break
+
+			reqs = list()
+			reqs.append((m[1], m[2], m[3], m[4]))
+
+			for n in range(0, 9):
+				try:
+					buf = sock.recv(zmq.NOBLOCK)
+				except zmq.ZMQError as e:
+					if e.errno == zmq.EAGAIN:
+						break
+
+				m = pickle.loads(buf)
+				if m[0] == "stop":
+					quit = True
+					break
+
+				reqs.append((m[1], m[2], m[3], m[4]))
+
+			if len(reqs) > 0:
+				PubControl._pubbatch(reqs)
+
+		sock.linger = 0
+		sock.close()
