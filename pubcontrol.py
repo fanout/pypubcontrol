@@ -78,14 +78,14 @@ class PubControl(object):
 
 	def _gen_auth_header(self):
 		if self.auth_basic_user:
-			return b64encode("Basic %s:%s" % (self.auth_basic_user, self.auth_basic_pass))
+			return "Basic " + b64encode("%s:%s" % (self.auth_basic_user, self.auth_basic_pass))
 		elif self.auth_jwt_claim:
 			if "exp" not in self.auth_jwt_claim:
 				claim = copy.copy(self.auth_jwt_claim)
 				claim["exp"] = int(time.time()) + 600
 			else:
 				claim = self.auth_jwt_claim
-			return "Bearer %s" % jwt.encode(claim, self.auth_jwt_key)
+			return "Bearer " + jwt.encode(claim, self.auth_jwt_key)
 		else:
 			return None
 
