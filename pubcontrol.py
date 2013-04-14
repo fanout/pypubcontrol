@@ -1,4 +1,5 @@
-import time
+from datetime import datetime
+import calendar
 import copy
 import json
 from base64 import b64encode
@@ -9,6 +10,9 @@ import jwt
 import zmq
 
 g_ctx = zmq.Context()
+
+def _timestamp_utcnow():
+	return calendar.timegm(datetime.utcnow().utctimetuple())
 
 class Format(object):
 	def name(self):
@@ -82,7 +86,7 @@ class PubControl(object):
 		elif self.auth_jwt_claim:
 			if "exp" not in self.auth_jwt_claim:
 				claim = copy.copy(self.auth_jwt_claim)
-				claim["exp"] = int(time.time()) + 600
+				claim["exp"] = _timestamp_utcnow() + 3600
 			else:
 				claim = self.auth_jwt_claim
 			return "Bearer " + jwt.encode(claim, self.auth_jwt_key)
