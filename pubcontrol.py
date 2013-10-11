@@ -39,6 +39,7 @@ class Item(object):
 class PubControl(object):
 	def __init__(self, uri):
 		self.uri = uri
+		self.lock = threading.Lock()
 		self.thread = None
 		self.thread_cond = None
 		self.req_queue = deque()
@@ -48,31 +49,45 @@ class PubControl(object):
 		self.auth_jwt_key = None
 
 	def set_auth_basic(self, username, password):
+		self.lock.acquire()
 		self.auth_basic_user = username
 		self.auth_basic_pass = password
+		self.lock.release()
 
 	def set_auth_jwt(self, claim, key):
+		self.lock.acquire()
 		self.auth_jwt_claim = claim
 		self.auth_jwt_key = key
+		self.lock.release()
 
 	def publish(self, channel, item):
 		i = item.export()
 		i['channel'] = channel
-		PubControl._pubcall(self.uri, self._gen_auth_header(), [i])
+		self.lock.acquire()
+		uri = self.uri
+		auth = self._gen_auth_header()
+		self.lock.release()
+		PubControl._pubcall(uri, auth, [i])
 
 	# callback: func(boolean success, string message)
 	# note: callback occurs in separate thread
 	def publish_async(self, channel, item, callback=None):
-		self._ensure_thread()
 		i = item.export()
 		i['channel'] = channel
-		self._queue_req(('pub', self.uri, self._gen_auth_header(), i, callback))
+		self.lock.acquire()
+		uri = self.uri
+		auth = self._gen_auth_header()
+		self._ensure_thread()
+		self.lock.release()
+		self._queue_req(('pub', uri, auth, i, callback))
 
 	def finish(self):
+		self.lock.acquire()
 		if self.thread is not None:
 			self._queue_req(('stop',))
 			self.thread.join()
 			self.thread = None
+		self.lock.release()
 
 	def _gen_auth_header(self):
 		if self.auth_basic_user:
