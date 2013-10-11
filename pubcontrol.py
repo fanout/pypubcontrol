@@ -160,14 +160,16 @@ class PubControl(object):
 	def _pubworker(self):
 		quit = False
 		while not quit:
-			# block until a request is ready, then read many if possible
-
 			self.thread_cond.acquire()
-			self.thread_cond.wait()
 
+			# if no requests ready, wait for one
 			if len(self.req_queue) == 0:
-				self.thread_cond.release()
-				continue
+				self.thread_cond.wait()
+
+				# still no requests after notification? start over
+				if len(self.req_queue) == 0:
+					self.thread_cond.release()
+					continue
 
 			reqs = list()
 			while len(self.req_queue) > 0 and len(reqs) < 10:
