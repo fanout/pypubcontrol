@@ -1,6 +1,6 @@
 PyPubControl
 ------------
-Date: March 24th, 2013
+Date: October 10th, 2013
 Author: Justin Karneges <justin@fanout.io>
 
 EPCP library for Python.
@@ -8,7 +8,16 @@ EPCP library for Python.
 Requirements:
 
   pyjwt
-  pyzmq
+
+Install:
+
+  For the latest stable version, you can install with pip:
+
+    pip install pubcontrol
+
+  Otherwise, to install directly:
+
+    python setup.py install
 
 Sample usage:
 

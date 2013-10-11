@@ -5,11 +5,8 @@ import json
 from base64 import b64encode
 import urllib2
 import threading
-import pickle
+from collections import deque
 import jwt
-import zmq
-
-g_ctx = zmq.Context()
 
 def _timestamp_utcnow():
 	return calendar.timegm(datetime.utcnow().utctimetuple())
@@ -32,9 +29,9 @@ class Item(object):
 	def export(self):
 		out = dict()
 		if self.id:
-			out["id"] = self.id
+			out['id'] = self.id
 		if self.prev_id:
-			out["prev-id"] = self.prev_id
+			out['prev-id'] = self.prev_id
 		for f in self.formats:
 			out[f.name()] = f.export()
 		return out
@@ -43,8 +40,8 @@ class PubControl(object):
 	def __init__(self, uri):
 		self.uri = uri
 		self.thread = None
-		self.sockid = id(self)
-		self.sock = None
+		self.thread_cond = None
+		self.req_queue = deque()
 		self.auth_basic_user = None
 		self.auth_basic_pass = None
 		self.auth_jwt_claim = None
@@ -60,7 +57,7 @@ class PubControl(object):
 
 	def publish(self, channel, item):
 		i = item.export()
-		i["channel"] = channel
+		i['channel'] = channel
 		PubControl._pubcall(self.uri, self._gen_auth_header(), [i])
 
 	# callback: func(boolean success, string message)
@@ -68,62 +65,60 @@ class PubControl(object):
 	def publish_async(self, channel, item, callback=None):
 		self._ensure_thread()
 		i = item.export()
-		i["channel"] = channel
-		self.sock.send(pickle.dumps(("pub", self.uri, self._gen_auth_header(), i, callback)))
+		i['channel'] = channel
+		self._queue_req(('pub', self.uri, self._gen_auth_header(), i, callback))
 
 	def finish(self):
-		if self.thread:
-			self.sock.send(pickle.dumps(("stop",)))
+		if self.thread is not None:
+			self._queue_req(('stop',))
 			self.thread.join()
 			self.thread = None
-			self.sock.linger = 0
-			self.sock.close()
-			self.sock = None
 
 	def _gen_auth_header(self):
 		if self.auth_basic_user:
-			return "Basic " + b64encode("%s:%s" % (self.auth_basic_user, self.auth_basic_pass))
+			return 'Basic ' + b64encode('%s:%s' % (self.auth_basic_user, self.auth_basic_pass))
 		elif self.auth_jwt_claim:
-			if "exp" not in self.auth_jwt_claim:
+			if 'exp' not in self.auth_jwt_claim:
 				claim = copy.copy(self.auth_jwt_claim)
-				claim["exp"] = _timestamp_utcnow() + 3600
+				claim['exp'] = _timestamp_utcnow() + 3600
 			else:
 				claim = self.auth_jwt_claim
-			return "Bearer " + jwt.encode(claim, self.auth_jwt_key)
+			return 'Bearer ' + jwt.encode(claim, self.auth_jwt_key)
 		else:
 			return None
 
 	def _ensure_thread(self):
 		if self.thread is None:
-			cond = threading.Condition()
-			cond.acquire()
-			self.thread = threading.Thread(target=PubControl._pubworker, args=(cond, self.sockid))
+			self.thread_cond = threading.Condition()
+			self.thread = threading.Thread(target=self._pubworker)
 			self.thread.daemon = True
 			self.thread.start()
-			cond.wait()
-			cond.release()
-			self.sock = g_ctx.socket(zmq.PUB)
-			self.sock.connect("inproc://publish-%d" % self.sockid)
+
+	def _queue_req(self, req):
+		self.thread_cond.acquire()
+		self.req_queue.append(req)
+		self.thread_cond.notify()
+		self.thread_cond.release()
 
 	@staticmethod
 	def _pubcall(uri, auth_header, items):
-		uri = uri + "/publish/"
+		uri = uri + '/publish/'
 
 		headers = dict()
 		if auth_header:
-			headers["Authorization"] = auth_header
-		headers["Content-Type"] = "application/json"
+			headers['Authorization'] = auth_header
+		headers['Content-Type'] = 'application/json'
 
 		content = dict()
-		content["items"] = items
+		content['items'] = items
 		content_raw = json.dumps(content)
 		if isinstance(content_raw, unicode):
-			content_raw = content_raw.encode("utf-8")
+			content_raw = content_raw.encode('utf-8')
 
 		try:
 			urllib2.urlopen(urllib2.Request(uri, content_raw, headers))
 		except Exception as e:
-			raise ValueError("failed to publish: " + repr(e.read()))
+			raise ValueError('failed to publish: ' + repr(e.read()))
 
 	# reqs: list of (uri, auth_header, item, callback)
 	@staticmethod
@@ -139,7 +134,7 @@ class PubControl(object):
 
 		try:
 			PubControl._pubcall(uri, auth_header, items)
-			result = (True, "")
+			result = (True, '')
 		except Exception as e:
 			result = (False, e.message)
 
@@ -147,43 +142,27 @@ class PubControl(object):
 			if c:
 				c(result[0], result[1])
 
-	@staticmethod
-	def _pubworker(cond, sockid):
-		sock = g_ctx.socket(zmq.SUB)
-		sock.setsockopt(zmq.SUBSCRIBE, "")
-		sock.bind("inproc://publish-%d" % sockid)
-		cond.acquire()
-		cond.notify()
-		cond.release()
-
+	def _pubworker(self):
 		quit = False
 		while not quit:
 			# block until a request is ready, then read many if possible
-			buf = sock.recv()
-			m = pickle.loads(buf)
 
-			if m[0] == "stop":
-				break
+			self.thread_cond.acquire()
+			self.thread_cond.wait()
+
+			if len(self.req_queue) == 0:
+				self.thread_cond.release()
+				continue
 
 			reqs = list()
-			reqs.append((m[1], m[2], m[3], m[4]))
-
-			for n in range(0, 9):
-				try:
-					buf = sock.recv(zmq.NOBLOCK)
-				except zmq.ZMQError as e:
-					if e.errno == zmq.EAGAIN:
-						break
-
-				m = pickle.loads(buf)
-				if m[0] == "stop":
+			while len(self.req_queue) > 0 and len(reqs) < 10:
+				m = self.req_queue.popleft()
+				if m[0] == 'stop':
 					quit = True
 					break
-
 				reqs.append((m[1], m[2], m[3], m[4]))
+
+			self.thread_cond.release()
 
 			if len(reqs) > 0:
 				PubControl._pubbatch(reqs)
-
-		sock.linger = 0
-		sock.close()
