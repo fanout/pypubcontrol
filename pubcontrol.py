@@ -36,7 +36,7 @@ class Item(object):
 			out[f.name()] = f.export()
 		return out
 
-class PubControl(object):
+class PubControlClient(object):
 	def __init__(self, uri):
 		self.uri = uri
 		self.lock = threading.Lock()
@@ -60,26 +60,24 @@ class PubControl(object):
 		self.auth_jwt_key = key
 		self.lock.release()
 
-	def publish(self, channel, item):
-		i = item.export()
-		i['channel'] = channel
-		self.lock.acquire()
-		uri = self.uri
-		auth = self._gen_auth_header()
-		self.lock.release()
-		PubControl._pubcall(uri, auth, [i])
-
 	# callback: func(boolean success, string message)
 	# note: callback occurs in separate thread
-	def publish_async(self, channel, item, callback=None):
+	def publish(self, channel, item, blocking=False, callback=None):
 		i = item.export()
 		i['channel'] = channel
-		self.lock.acquire()
-		uri = self.uri
-		auth = self._gen_auth_header()
-		self._ensure_thread()
-		self.lock.release()
-		self._queue_req(('pub', uri, auth, i, callback))
+		if blocking:
+			self.lock.acquire()
+			uri = self.uri
+			auth = self._gen_auth_header()
+			self.lock.release()
+			PubControl._pubcall(uri, auth, [i])
+		else:
+			self.lock.acquire()
+			uri = self.uri
+			auth = self._gen_auth_header()
+			self._ensure_thread()
+			self.lock.release()
+			self._queue_req(('pub', uri, auth, i, callback))
 
 	def finish(self):
 		self.lock.acquire()
@@ -183,3 +181,58 @@ class PubControl(object):
 
 			if len(reqs) > 0:
 				PubControl._pubbatch(reqs)
+
+class PubControlClientCallbackHandler(object):
+	def __init__(self, num_calls, callback):
+		self.num_calls = num_calls
+		self.callback = callback
+		self.success = True
+		self.first_error_message = None
+
+	def handler(self, success, message):
+		if not success and self.success:
+			self.success = False
+			self.first_error_message = message
+
+		self.num_calls -= 1
+		if self.num_calls <= 0:
+			self.callback(self.success, self.first_error_message)
+
+class PubControl(object):
+	def __init__(self, config=None):
+		self.clients = list()
+		if config:
+			self.apply_config(config)
+
+	def remove_all_clients(self):
+		self.clients = list()
+
+	def add_client(self, client):
+		self.clients.append(client)
+
+	def apply_config(self, config):
+		if not isinstance(config, list):
+			config = [config]
+		for entry in config:
+			client = PubControlClient(entry['uri'])
+			if 'iss' in entry:
+				client.set_auth_jwt({'iss': entry['iss']}, entry['key'])
+
+			self.clients.append(client)
+
+	def publish(self, channel, item, blocking=False, callback=None):
+		if blocking:
+			for client in self.clients:
+				client.publish(channel, item, blocking=True)
+		else:
+			if callback is not None:
+				cb = PubControlClientCallbackHandler(len(self.clients), callback).handler
+			else:
+				cb = None
+
+			for client in self.clients:
+				client.publish(channel, item, blocking=False, callback=cb)
+
+	def _finish(self):
+		for client in self.clients:
+			client.finish()
