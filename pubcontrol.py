@@ -70,7 +70,7 @@ class PubControlClient(object):
 			uri = self.uri
 			auth = self._gen_auth_header()
 			self.lock.release()
-			PubControl._pubcall(uri, auth, [i])
+			PubControlClient._pubcall(uri, auth, [i])
 		else:
 			self.lock.acquire()
 			uri = self.uri
@@ -146,7 +146,7 @@ class PubControlClient(object):
 			callbacks.append(req[3])
 
 		try:
-			PubControl._pubcall(uri, auth_header, items)
+			PubControlClient._pubcall(uri, auth_header, items)
 			result = (True, '')
 		except Exception as e:
 			result = (False, e.message)
@@ -180,7 +180,7 @@ class PubControlClient(object):
 			self.thread_cond.release()
 
 			if len(reqs) > 0:
-				PubControl._pubbatch(reqs)
+				PubControlClient._pubbatch(reqs)
 
 class PubControlClientCallbackHandler(object):
 	def __init__(self, num_calls, callback):
@@ -233,6 +233,6 @@ class PubControl(object):
 			for client in self.clients:
 				client.publish(channel, item, blocking=False, callback=cb)
 
-	def _finish(self):
+	def finish(self):
 		for client in self.clients:
 			client.finish()
