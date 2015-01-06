@@ -4,7 +4,7 @@ from setuptools import setup
 
 setup(
 name="pubcontrol",
-version="1.0.4",
+version="2.0.0",
 description="EPCP library",
 author="Justin Karneges",
 author_email="justin@affinix.com",
