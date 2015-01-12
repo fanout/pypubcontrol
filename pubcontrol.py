@@ -3,10 +3,14 @@ import calendar
 import copy
 import json
 from base64 import b64encode
-import urllib2
 import threading
 from collections import deque
 import jwt
+
+try:
+	import urllib.request as urllib2
+except ImportError:
+	import urllib2
 
 def _timestamp_utcnow():
 	return calendar.timegm(datetime.utcnow().utctimetuple())
@@ -125,9 +129,14 @@ class PubControlClient(object):
 		content = dict()
 		content['items'] = items
 		content_raw = json.dumps(content)
-		if isinstance(content_raw, unicode):
-			content_raw = content_raw.encode('utf-8')
 
+		try:
+			if isinstance(content_raw, unicode):
+				content_raw = content_raw.encode('utf-8')
+		except NameError:
+			if isinstance(content_raw, str):
+				content_raw = content_raw.encode('utf-8')
+			
 		try:
 			urllib2.urlopen(urllib2.Request(uri, content_raw, headers))
 		except Exception as e:
