@@ -97,7 +97,7 @@ class PubControlClient(object):
 				claim['exp'] = _timestamp_utcnow() + 3600
 			else:
 				claim = self.auth_jwt_claim
-			return 'Bearer ' + jwt.encode(claim, self.auth_jwt_key)
+			return 'Bearer ' + jwt.encode(claim, self.auth_jwt_key).decode('utf-8')
 		else:
 			return None
 
@@ -155,7 +155,10 @@ class PubControlClient(object):
 			PubControlClient._pubcall(uri, auth_header, items)
 			result = (True, '')
 		except Exception as e:
-			result = (False, e.message)
+			try:
+				result = (False, e.message)
+			except AttributeError:
+				result = (False, str(e))
 
 		for c in callbacks:
 			if c:
