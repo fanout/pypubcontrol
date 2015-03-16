@@ -12,9 +12,6 @@ try:
 except ImportError:
 	import urllib2
 
-def _timestamp_utcnow():
-	return calendar.timegm(datetime.utcnow().utctimetuple())
-
 class Format(object):
 	def name(self):
 		pass
