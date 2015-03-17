@@ -19,7 +19,15 @@ try:
 except ImportError:
 	import urllib2
 
+# The PubControlClient class allows consumers to publish either synchronously 
+# or asynchronously to an endpoint of their choice. The consumer wraps a Format
+# class instance in an Item class instance and passes that to the publish
+# methods. The async publish method has an optional callback parameter that
+# is called after the publishing is complete to notify the consumer of the
+# result.
 class PubControlClient(object):
+
+	# Initialize this class with a URL representing the publishing endpoint.
 	def __init__(self, uri):
 		self.uri = uri
 		self.lock = threading.Lock()
@@ -31,20 +39,28 @@ class PubControlClient(object):
 		self.auth_jwt_claim = None
 		self.auth_jwt_key = None
 
+	# Call this method and pass a username and password to use basic
+	# authentication with the configured endpoint.
 	def set_auth_basic(self, username, password):
 		self.lock.acquire()
 		self.auth_basic_user = username
 		self.auth_basic_pass = password
 		self.lock.release()
 
+	# Call this method and pass a claim and key to use JWT authentication
+	# with the configured endpoint.
 	def set_auth_jwt(self, claim, key):
 		self.lock.acquire()
 		self.auth_jwt_claim = claim
 		self.auth_jwt_key = key
 		self.lock.release()
 
-	# callback: func(boolean success, string message)
-	# note: callback occurs in separate thread
+	# The publish method for publishing the specified item to the specified
+	# channel on the configured endpoint. The blocking parameter indicates
+	# whether the the callback method should be blocking or non-blocking. The
+	# callback parameter is optional and will be passed the publishing results
+	# after publishing is complete. Note that the callback executes on a
+	# separate thread.
 	def publish(self, channel, item, blocking=False, callback=None):
 		i = item.export()
 		i['channel'] = channel
@@ -53,7 +69,7 @@ class PubControlClient(object):
 			uri = self.uri
 			auth = self._gen_auth_header()
 			self.lock.release()
-			PubControlClient._pubcall(uri, auth, [i])
+			self._pubcall(uri, auth, [i])
 		else:
 			self.lock.acquire()
 			uri = self.uri
@@ -62,6 +78,9 @@ class PubControlClient(object):
 			self.lock.release()
 			self._queue_req(('pub', uri, auth, i, callback))
 
+	# The finish method is a blocking method that ensures that all asynchronous
+	# publishing is complete prior to returning and allowing the consumer to 
+	# proceed.
 	def finish(self):
 		self.lock.acquire()
 		if self.thread is not None:
@@ -70,6 +89,10 @@ class PubControlClient(object):
 			self.thread = None
 		self.lock.release()
 
+	# An internal method used to generate an authorization header. The
+	# authorization header is generated based on whether basic or JWT
+	# authorization information was provided via the publicly accessible
+	# 'set_*_auth' methods defined above.
 	def _gen_auth_header(self):
 		if self.auth_basic_user:
 			return 'Basic ' + b64encode('%s:%s' % (self.auth_basic_user, self.auth_basic_pass))
@@ -83,6 +106,10 @@ class PubControlClient(object):
 		else:
 			return None
 
+	# An internal method that ensures that asynchronous publish calls are
+	# properly processed. This method initializes the required class fields,
+	# starts the pubworker worker thread, and is meant to execute only when
+	# the consumer makes an asynchronous publish call.
 	def _ensure_thread(self):
 		if self.thread is None:
 			self.thread_cond = threading.Condition()
@@ -90,14 +117,20 @@ class PubControlClient(object):
 			self.thread.daemon = True
 			self.thread.start()
 
+	# An internal method for adding an asynchronous publish request to the 
+	# publishing queue. This method will also activate the pubworker worker
+	# thread to make sure that it process any and all requests added to
+	# the queue.
 	def _queue_req(self, req):
 		self.thread_cond.acquire()
 		self.req_queue.append(req)
 		self.thread_cond.notify()
 		self.thread_cond.release()
 
-	@staticmethod
-	def _pubcall(uri, auth_header, items):
+	# An internal method for preparing the HTTP POST request for publishing
+	# data to the endpoint. This method accepts the URI endpoint, authorization
+	# header, and a list of items to publish.
+	def _pubcall(self, uri, auth_header, items):
 		uri = uri + '/publish/'
 
 		headers = dict()
@@ -117,13 +150,22 @@ class PubControlClient(object):
 				content_raw = content_raw.encode('utf-8')
 			
 		try:
-			urllib2.urlopen(urllib2.Request(uri, content_raw, headers))
+			self._make_http_request(uri, content_raw, headers)
 		except Exception as e:
 			raise ValueError('failed to publish: ' + str(e))
 
-	# reqs: list of (uri, auth_header, item, callback)
-	@staticmethod
-	def _pubbatch(reqs):
+	# An internal method for making an HTTP request to the specified URI
+	# with the specified content and headers.
+	def _make_http_request(self, uri, content_raw, headers):
+		urllib2.urlopen(urllib2.Request(uri, content_raw, headers))
+
+	# An internal method for publishing a batch of requests. The requests are
+	# parsed for the URI, authorization header, and each request is published
+	# to the endpoint. After all publishing is complete, each callback
+	# corresponding to each request is called (if a callback was originally
+	# provided for that request) and passed a result indicating whether that
+	# request was successfully published.
+	def _pubbatch(self, reqs):
 		assert(len(reqs) > 0)
 		uri = reqs[0][0]
 		auth_header = reqs[0][1]
@@ -134,7 +176,7 @@ class PubControlClient(object):
 			callbacks.append(req[3])
 
 		try:
-			PubControlClient._pubcall(uri, auth_header, items)
+			self._pubcall(uri, auth_header, items)
 			result = (True, '')
 		except Exception as e:
 			try:
@@ -146,6 +188,11 @@ class PubControlClient(object):
 			if c:
 				c(result[0], result[1])
 
+	# An internal method that is meant to run as a separate thread and process
+	# asynchronous publishing requests. The method runs continously and
+	# publishes requests in batches containing a maximum of 10 requests. The
+	# method completes and the thread is terminated only when a 'stop' command
+	# is provided in the request queue.
 	def _pubworker(self):
 		quit = False
 		while not quit:
@@ -171,4 +218,4 @@ class PubControlClient(object):
 			self.thread_cond.release()
 
 			if len(reqs) > 0:
-				PubControlClient._pubbatch(reqs)
+				self._pubbatch(reqs)

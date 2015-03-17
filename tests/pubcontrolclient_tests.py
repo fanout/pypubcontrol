@@ -1,0 +1,296 @@
+import sys
+import unittest
+import copy
+from base64 import b64encode, b64decode
+import threading
+import time
+import json
+
+try:
+	import urllib.request as urllib2
+except ImportError:
+	import urllib2
+
+sys.path.append('../')
+from src.pubcontrolclient import PubControlClient
+from src.item import Item
+from src.format import Format
+
+class TestFormatSubClass(Format):
+	def name(self):
+		return 'name'
+
+	def export(self):
+		return {'body': 'bodyvalue'}
+
+class PubControlClientForTesting(PubControlClient):
+	def set_test_instance(self, instance):
+		self.test_instance = instance
+
+class PccForPublishTesting(PubControlClientForTesting):
+	def _pubcall(self, uri, auth_header, items):
+		self.test_instance.assertEqual(uri, 'uri')
+		self.test_instance.assertEqual(auth_header, 'Basic ' + b64encode(
+				'user:pass'))
+		self.test_instance.assertEqual(items, [{'name': {'body': 'bodyvalue'},
+				'channel': 'chann'}])
+
+	def _queue_req(self, req):
+		self.test_instance.assertEqual(req[0], 'pub')
+		self.test_instance.assertEqual(req[1], 'uri')
+		self.test_instance.assertEqual(req[2], 'Basic ' + b64encode(
+				'user:pass'))
+		self.test_instance.assertEqual(req[3], {'name': {'body': 'bodyvalue'},
+				'channel': 'chann'})
+		self.test_instance.assertEqual(req[4], 'callback')
+
+	def _ensure_thread(self):
+		self.ensure_thread_executed = True
+
+class PccForPubCallTesting(PubControlClientForTesting):
+	def set_params(self, uri, content_raw, headers, result_failure = False):
+		self.http_uri = uri
+		self.http_content_raw = content_raw
+		self.http_headers = headers
+		self.http_result_failure = result_failure
+
+	def _make_http_request(self, uri, content_raw, headers):
+		self.test_instance.assertEqual(uri, self.http_uri + '/publish/')
+		self.test_instance.assertEqual(content_raw, json.dumps(self.http_content_raw))
+		self.test_instance.assertEqual(headers, self.http_headers)
+		if self.http_result_failure:
+			raise ValueError('test failure')
+
+class PccForPubBatchTesting(PubControlClientForTesting):
+	def set_params(self, result_failure, num_callbacks):
+		self.req_index = 0
+		self.num_callbacks = num_callbacks
+		self.http_result_failure = result_failure
+
+	def _pubcall(self, uri, auth_header, items):
+		self.test_instance.assertEqual(uri, 'uri')
+		self.test_instance.assertEqual(auth_header, 'Basic ' + b64encode(
+				'user:pass' + str(self.req_index)))
+		items_to_compare_with = []
+		export = Item(TestFormatSubClass()).export()
+		export['channel'] = 'chann'
+		for n in range(0, self.num_callbacks):
+			items_to_compare_with.append(copy.deepcopy(export))
+		self.req_index += 1
+		self.test_instance.assertEqual(items, items_to_compare_with)
+		if self.http_result_failure:
+			raise ValueError('error message')
+
+class PccForPubWorkerTesting(PubControlClientForTesting):
+	def set_params(self):
+		self.req_index = 0
+
+	def _pubbatch(self, reqs):
+		self.test_instance.assertTrue(len(reqs) <= 10, 'len(reqs) == ' +
+				str(len(reqs)))
+		for req in reqs:
+			self.test_instance.assertEqual(req[0], 'uri')
+			self.test_instance.assertEqual(req[1], 'Basic ' + b64encode(
+					'user:pass' + str(self.req_index)))
+			export = Item(TestFormatSubClass()).export()
+			export['channel'] = 'chann'
+			self.test_instance.assertEqual(req[2], export)
+			self.test_instance.assertEqual(req[3], 'callback')
+			self.req_index += 1
+
+class TestPubControlClient(unittest.TestCase):
+	def test_initialize(self):
+		pcc = PubControlClient('uri')
+		self.assertEqual(pcc.uri, 'uri')
+		self.assertEqual(pcc.thread, None)
+		self.assertEqual(pcc.thread_cond, None)
+		self.assertEqual(len(pcc.req_queue), 0)
+		self.assertEqual(pcc.auth_basic_user, None)
+		self.assertEqual(pcc.auth_basic_pass, None)
+		self.assertEqual(pcc.auth_jwt_claim, None)
+		self.assertEqual(pcc.auth_jwt_key, None)
+		self.assertTrue(pcc.lock != None)
+
+	def test_set_auth_basic(self):
+		pcc = PubControlClient('uri')
+		pcc.set_auth_basic('user', 'pass')
+		self.assertEqual(pcc.auth_basic_user, 'user')
+		self.assertEqual(pcc.auth_basic_pass, 'pass')
+
+	def test_set_auth_jwt(self):
+		pcc = PubControlClient('uri')
+		pcc.set_auth_jwt('claim', 'key')
+		self.assertEqual(pcc.auth_jwt_claim, 'claim')
+		self.assertEqual(pcc.auth_jwt_key, 'key')
+
+	def test_ensure_thread(self):
+		pcc = PubControlClient('uri')
+		pcc._ensure_thread()
+		self.assertTrue(isinstance(pcc.thread_cond, threading._Condition))
+		self.assertTrue(isinstance(pcc.thread, threading.Thread))
+
+	def test_queue_req(self):
+		pcc = PubControlClient('uri')
+		pcc._ensure_thread()
+		pcc._queue_req('req')
+		self.assertEqual(pcc.req_queue.popleft(), 'req')
+
+	def test_gen_auth_header_basic(self):
+		pcc = PubControlClient('uri')
+		pcc.set_auth_basic('user', 'pass')
+		self.assertEqual(pcc._gen_auth_header(), 'Basic ' + b64encode(
+				'user:pass'))
+
+	def test_gen_auth_header_jwt(self):
+		pcc = PubControlClient('uri')
+		pcc.set_auth_jwt({'iss': 'hello', 'exp': 1426106601},
+				'key==')
+		self.assertEqual(pcc._gen_auth_header(), 'Bearer eyJhbGciOiJIU' +
+				'zI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJoZWxsbyIsImV4cCI6MTQyNjEwN' +
+				'jYwMX0.qmFVZ3iS041fAhqHno0vYLykNycT40ntBuD3G7ISDJw')
+
+	def test_gen_auth_header_none(self):
+		pcc = PubControlClient('uri')
+		self.assertEqual(pcc._gen_auth_header(), None)
+
+	def test_finish(self):
+		pcc = PubControlClient('uri')
+		self.thread_for_testing_finish_completed = False
+		pcc.thread_cond = threading.Condition()
+		pcc.thread = threading.Thread(target = self.thread_for_testing_finish)
+		pcc.thread.daemon = True
+		pcc.thread.start()
+		pcc.finish()
+		self.assertTrue(self.thread_for_testing_finish_completed)
+		self.assertEqual(pcc.thread, None)
+		self.assertEqual(pcc.req_queue.popleft(), ('stop',))
+
+	def thread_for_testing_finish(self):
+		time.sleep(1)
+		self.thread_for_testing_finish_completed = True
+
+	def test_publish(self):
+		pcc = PccForPublishTesting('uri')
+		pcc.set_auth_basic('user', 'pass')
+		pcc.set_test_instance(self)
+		pcc.publish('chann', Item(TestFormatSubClass()), False, 'callback')
+		self.assertTrue(pcc.ensure_thread_executed)
+
+	def test_publish_blocking(self):
+		pcc = PccForPublishTesting('uri')
+		pcc.set_auth_basic('user', 'pass')
+		pcc.set_test_instance(self)
+		pcc.publish('chann', Item(TestFormatSubClass()), True, 'callback')
+
+	def test_pubcall_success_http(self):
+		pcc = PccForPubCallTesting('uri')
+		pcc.set_auth_basic('user', 'pass')
+		pcc.set_params('http://localhost:8080', {'items':
+				[{'name': {'body': 'bodyvalue'}, 'channel': 'chann'}]},
+				{ 'Authorization': 'Basic ' + b64encode('user:pass'),
+				'Content-Type': 'application/json' })
+		pcc.set_test_instance(self)
+		pcc._pubcall('http://localhost:8080', 'Basic ' +
+				b64encode('user:pass'), [{'name': {'body': 'bodyvalue'},
+				'channel': 'chann'}])
+
+	def test_pubcall_success_https(self):
+		pcc = PccForPubCallTesting('uri')
+		pcc.set_auth_jwt({'iss': 'hello', 'exp': 1426106601},
+				b64decode('key=='))
+		pcc.set_params('https://localhost:8080', {'items':
+				[{'name': {'body': 'bodyvalue'}, 'channel': 'chann'}]},
+				{ 'Authorization': 'Bearer eyJhbGciOiJIU' +
+				'zI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJoZWxsbyIsImV4cCI6MTQyNjEwN' +
+				'jYwMX0.qmFVZ3iS041fAhqHno0vYLykNycT40ntBuD3G7ISDJw',
+				'Content-Type': 'application/json' })
+		pcc.set_test_instance(self)
+		pcc._pubcall('https://localhost:8080', 'Bearer eyJhbGciOiJIU' +
+				'zI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJoZWxsbyIsImV4cCI6MTQyNjEwN' +
+				'jYwMX0.qmFVZ3iS041fAhqHno0vYLykNycT40ntBuD3G7ISDJw',
+				[{'name': {'body': 'bodyvalue'},
+				'channel': 'chann'}])
+
+	def test_pubcall_failure(self):
+		pcc = PccForPubCallTesting('uri')
+		pcc.set_params('https://localhost:8080', {'items':
+				[{'name': {'body': 'bodyvalue'}, 'channel': 'chann'}]},
+				{ 'Content-Type': 'application/json' }, True)
+		pcc.set_test_instance(self)
+		try:
+			pcc._pubcall('https://localhost:8080', None, [{'name':
+					{'body': 'bodyvalue'}, 'channel': 'chann'}])
+			self.assertTrue(False)
+		except ValueError as e:
+			self.assertTrue(str(e).index('test failure'))
+
+	def pubbatch_callback(self, result, message):
+		self.num_cbs_expected -= 1
+		self.assertEqual(result, self.result_expected)
+		self.assertEqual(message, self.message_expected)
+
+	def test_pubbatch_success(self):
+		pcc = PccForPubBatchTesting('uri')
+		pcc.set_test_instance(self)
+		self.result_expected = True
+		self.message_expected = ''
+		self.num_cbs_expected = 5
+		pcc.set_params(None, self.num_cbs_expected)
+		reqs = []
+		export = Item(TestFormatSubClass()).export()
+		export['channel'] = 'chann'
+		for n in range(0, self.num_cbs_expected):
+			reqs.append(['uri', 'Basic ' + b64encode('user:pass' + str(n)),
+					export, self.pubbatch_callback])
+		pcc._pubbatch(reqs)
+		self.assertEqual(self.num_cbs_expected, 0)
+
+	def test_pubbatch_failure(self):
+		pcc = PccForPubBatchTesting('uri')
+		pcc.set_test_instance(self)
+		self.result_expected = False
+		self.message_expected = 'error message'
+		self.num_cbs_expected = 5
+		pcc.set_params(True, self.num_cbs_expected)
+		reqs = []
+		export = Item(TestFormatSubClass()).export()
+		export['channel'] = 'chann'
+		for n in range(0, self.num_cbs_expected):
+			reqs.append(['uri', 'Basic ' + b64encode('user:pass' + str(n)),
+					export, self.pubbatch_callback])
+		pcc._pubbatch(reqs)
+		self.assertEqual(self.num_cbs_expected, 0)
+
+	def test_pubworker(self):
+		pcc = PccForPubWorkerTesting('uri')
+		pcc.set_test_instance(self)
+		pcc.set_params()
+		pcc._ensure_thread()
+		export = Item(TestFormatSubClass()).export()
+		export['channel'] = 'chann'
+		for n in range(0, 500):
+			pcc.req_queue.append(['pub', 'uri',
+					'Basic ' + b64encode('user:pass' + str(n)), export,
+					'callback'])
+		pcc.finish()
+		self.assertEqual(pcc.req_index, 500)
+
+	def test_pubworker_stop(self):
+		pcc = PccForPubWorkerTesting('uri')
+		pcc.set_test_instance(self)
+		pcc.set_params()
+		pcc._ensure_thread()
+		export = Item(TestFormatSubClass()).export()
+		export['channel'] = 'chann'
+		for n in range(0, 500):
+			if n == 250:
+				pcc.req_queue.append(['stop'])
+			else:
+				pcc.req_queue.append(['pub', 'uri',
+						'Basic ' + b64encode('user:pass' + str(n)), export,
+						'callback'])
+		pcc.finish()
+		self.assertEqual(pcc.req_index, 250)
+
+if __name__ == '__main__':
+		unittest.main()
