@@ -1,3 +1,10 @@
+#    pubcontrolclient.py
+#    ~~~~~~~~~
+#    This module implements the PubControlClient class.
+#    :authors: Justin Karneges, Konstantin Bokarius.
+#    :copyright: (c) 2015 by Fanout, Inc.
+#    :license: MIT, see LICENSE for more details.
+
 from datetime import datetime
 import calendar
 import copy
@@ -11,31 +18,6 @@ try:
 	import urllib.request as urllib2
 except ImportError:
 	import urllib2
-
-class Format(object):
-	def name(self):
-		pass
-
-	def export(self):
-		pass
-
-class Item(object):
-	def __init__(self, formats, id=None, prev_id=None):
-		self.id = id
-		self.prev_id = prev_id
-		if isinstance(formats, Format):
-			formats = [formats]
-		self.formats = formats
-
-	def export(self):
-		out = dict()
-		if self.id:
-			out['id'] = self.id
-		if self.prev_id:
-			out['prev-id'] = self.prev_id
-		for f in self.formats:
-			out[f.name()] = f.export()
-		return out
 
 class PubControlClient(object):
 	def __init__(self, uri):
@@ -94,7 +76,7 @@ class PubControlClient(object):
 		elif self.auth_jwt_claim:
 			if 'exp' not in self.auth_jwt_claim:
 				claim = copy.copy(self.auth_jwt_claim)
-				claim['exp'] = _timestamp_utcnow() + 3600
+				claim['exp'] = calendar.timegm(datetime.utcnow().utctimetuple()) + 3600
 			else:
 				claim = self.auth_jwt_claim
 			return 'Bearer ' + jwt.encode(claim, self.auth_jwt_key).decode('utf-8')
@@ -137,7 +119,7 @@ class PubControlClient(object):
 		try:
 			urllib2.urlopen(urllib2.Request(uri, content_raw, headers))
 		except Exception as e:
-			raise ValueError('failed to publish: ' + repr(e.read()))
+			raise ValueError('failed to publish: ' + str(e))
 
 	# reqs: list of (uri, auth_header, item, callback)
 	@staticmethod
@@ -190,58 +172,3 @@ class PubControlClient(object):
 
 			if len(reqs) > 0:
 				PubControlClient._pubbatch(reqs)
-
-class PubControlClientCallbackHandler(object):
-	def __init__(self, num_calls, callback):
-		self.num_calls = num_calls
-		self.callback = callback
-		self.success = True
-		self.first_error_message = None
-
-	def handler(self, success, message):
-		if not success and self.success:
-			self.success = False
-			self.first_error_message = message
-
-		self.num_calls -= 1
-		if self.num_calls <= 0:
-			self.callback(self.success, self.first_error_message)
-
-class PubControl(object):
-	def __init__(self, config=None):
-		self.clients = list()
-		if config:
-			self.apply_config(config)
-
-	def remove_all_clients(self):
-		self.clients = list()
-
-	def add_client(self, client):
-		self.clients.append(client)
-
-	def apply_config(self, config):
-		if not isinstance(config, list):
-			config = [config]
-		for entry in config:
-			client = PubControlClient(entry['uri'])
-			if 'iss' in entry:
-				client.set_auth_jwt({'iss': entry['iss']}, entry['key'])
-
-			self.clients.append(client)
-
-	def publish(self, channel, item, blocking=False, callback=None):
-		if blocking:
-			for client in self.clients:
-				client.publish(channel, item, blocking=True)
-		else:
-			if callback is not None:
-				cb = PubControlClientCallbackHandler(len(self.clients), callback).handler
-			else:
-				cb = None
-
-			for client in self.clients:
-				client.publish(channel, item, blocking=False, callback=cb)
-
-	def finish(self):
-		for client in self.clients:
-			client.finish()

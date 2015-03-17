@@ -1,6 +1,7 @@
 PyPubControl
 ============
-Author: Justin Karneges <justin@fanout.io>
+Author: Justin Karneges <justin@fanout.io>  
+        Konstantin Bokarius <kon@fanout.io>
 
 EPCP library for Python.
 
