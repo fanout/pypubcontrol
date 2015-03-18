@@ -95,7 +95,7 @@ class PubControlClient(object):
 	# 'set_*_auth' methods defined above.
 	def _gen_auth_header(self):
 		if self.auth_basic_user:
-			return 'Basic ' + b64encode('%s:%s' % (self.auth_basic_user, self.auth_basic_pass))
+			return 'Basic ' + str(b64encode(('%s:%s' % (self.auth_basic_user, self.auth_basic_pass)).encode('ascii')))
 		elif self.auth_jwt_claim:
 			if 'exp' not in self.auth_jwt_claim:
 				claim = copy.copy(self.auth_jwt_claim)
