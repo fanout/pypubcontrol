@@ -21,6 +21,15 @@ try:
 except ImportError:
 	ndg = None
 
+try:
+	import urllib3
+	try:
+		urllib3.disable_warnings()
+	except AttributeError:
+		pass
+except ImportError:
+	pass
+
 # The PubControlClient class allows consumers to publish either synchronously 
 # or asynchronously to an endpoint of their choice. The consumer wraps a Format
 # class instance in an Item class instance and passes that to the publish
