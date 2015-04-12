@@ -8,6 +8,7 @@ Requirements
 ------------
 
 * pyjwt
+* requests
 
 Install
 -------
@@ -19,6 +20,8 @@ You can install from PyPi:
 Or from this repository:
 
     sudo python setup.py install
+
+WARNING: on Python versions prior to 2.7.9, SSL certificates are not validated by default. To enable validation for earlier versions install the ndg-httpsclient package from PyPi.
 
 Sample usage
 ------------

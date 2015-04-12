@@ -21,13 +21,19 @@ try:
 except ImportError:
 	ndg = None
 
+# TODO: Remove in the future when most users have Python >= 2.7.9.
 try:
 	import urllib3
-	try:
-		urllib3.disable_warnings()
-	except AttributeError:
-		pass
 except ImportError:
+	try:
+		from requests.packages import urllib3
+	except ImportError:
+		pass
+try:
+	urllib3.disable_warnings()
+except NameError:
+	pass
+except AttributeError:
 	pass
 
 # The PubControlClient class allows consumers to publish either synchronously 
