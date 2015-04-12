@@ -5,6 +5,7 @@
 #    :copyright: (c) 2015 by Fanout, Inc.
 #    :license: MIT, see LICENSE for more details.
 
+import sys
 from datetime import datetime
 import calendar
 import copy
@@ -13,11 +14,12 @@ from base64 import b64encode
 import threading
 from collections import deque
 import jwt
+import requests
 
 try:
-	import urllib.request as urllib2
+	import ndg.httpsclient
 except ImportError:
-	import urllib2
+	ndg = None
 
 # The PubControlClient class allows consumers to publish either synchronously 
 # or asynchronously to an endpoint of their choice. The consumer wraps a Format
@@ -38,6 +40,7 @@ class PubControlClient(object):
 		self.auth_basic_pass = None
 		self.auth_jwt_claim = None
 		self.auth_jwt_key = None
+		self.requests_session = requests.session()
 
 	# Call this method and pass a username and password to use basic
 	# authentication with the configured endpoint.
@@ -157,7 +160,10 @@ class PubControlClient(object):
 	# An internal method for making an HTTP request to the specified URI
 	# with the specified content and headers.
 	def _make_http_request(self, uri, content_raw, headers):
-		urllib2.urlopen(urllib2.Request(uri, content_raw, headers))
+		if sys.version_info >= (3, 0) or (ndg and ndg.httpsclient):
+			self.requests_session.post(uri, headers=headers, data=content_raw)
+		else:
+			self.requests_session.post(uri, headers=headers, data=content_raw, verify=False)
 
 	# An internal method for publishing a batch of requests. The requests are
 	# parsed for the URI, authorization header, and each request is published
