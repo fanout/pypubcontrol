@@ -160,7 +160,7 @@ class PubControlClient(object):
 	# An internal method for making an HTTP request to the specified URI
 	# with the specified content and headers.
 	def _make_http_request(self, uri, content_raw, headers):
-		if sys.version_info >= (3, 0) or (ndg and ndg.httpsclient):
+		if sys.version_info >= (2, 7, 9) or (ndg and ndg.httpsclient):
 			self.requests_session.post(uri, headers=headers, data=content_raw)
 		else:
 			self.requests_session.post(uri, headers=headers, data=content_raw, verify=False)
