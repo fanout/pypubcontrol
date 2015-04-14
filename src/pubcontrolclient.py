@@ -176,9 +176,17 @@ class PubControlClient(object):
 	# with the specified content and headers.
 	def _make_http_request(self, uri, content_raw, headers):
 		if sys.version_info >= (2, 7, 9) or (ndg and ndg.httpsclient):
-			self.requests_session.post(uri, headers=headers, data=content_raw)
+			res = self.requests_session.post(uri, headers=headers, data=content_raw)
 		else:
-			self.requests_session.post(uri, headers=headers, data=content_raw, verify=False)
+			res = self.requests_session.post(uri, headers=headers, data=content_raw, verify=False)
+		self._verify_status_code(res.status_code, res.text)
+
+	# An internal method for ensuring a successful status code is returned
+	# from the server.
+	def _verify_status_code(self, code, message):
+		if code < 200 or code >= 300:
+			raise ValueError('received failed status code ' + str(code) +
+					' with message: ' + message)
 
 	# An internal method for publishing a batch of requests. The requests are
 	# parsed for the URI, authorization header, and each request is published

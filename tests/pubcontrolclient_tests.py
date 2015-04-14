@@ -298,5 +298,15 @@ class TestPubControlClient(unittest.TestCase):
 		pcc.finish()
 		self.assertEqual(pcc.req_index, 250)
 
+	def test_verify_status_code(self):
+		pcc = PubControlClient('uri')
+		pcc._verify_status_code(200, '')
+		pcc._verify_status_code(250, '')
+		pcc._verify_status_code(299, '')
+		with self.assertRaises(ValueError):
+   			pcc._verify_status_code(199, '')
+		with self.assertRaises(ValueError):
+   			pcc._verify_status_code(300, '')		
+
 if __name__ == '__main__':
 		unittest.main()
