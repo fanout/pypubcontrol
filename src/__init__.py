@@ -9,5 +9,6 @@ from .pcccbhandler import PubControlClientCallbackHandler
 from .item import Item
 from .format import Format
 from .pubcontrolclient import PubControlClient
+from .zmqpubcontrolclient import ZmqPubControlClient
 from .pubcontrol import PubControl
 
