@@ -6,6 +6,7 @@
 #    :license: MIT, see LICENSE for more details.
 
 from .format import Format
+from .utilities import _ensure_utf8, _ensure_unicode
 
 # The Item class is a container used to contain one or more format
 # implementation instances where each implementation instance is of a
@@ -65,25 +66,3 @@ class Item(object):
 				else:
 					out[f.name()] = f.export()
 		return out
-
-	# An internal method for encoding the specified value as UTF8 only
-	# if it is unicode.
-	def _ensure_utf8(value):
-		try:
-			if isinstance(value, unicode):
-				return value.encode('utf-8')
-		except NameError:
-			if isinstance(value, str):
-				return value.encode('utf-8')
-		return value
-
-	# An internal method for decoding the specified value as UTF8 only
-	# if it is binary.
-	def _ensure_unicode(value):
-		try:
-			if not isinstance(value, unicode):
-				return value.decode('utf-8')
-		except NameError:
-			if not isinstance(value, str):
-				return value.decode('utf-8')
-		return value

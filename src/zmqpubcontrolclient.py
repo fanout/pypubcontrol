@@ -5,9 +5,18 @@
 #    :copyright: (c) 2015 by Fanout, Inc.
 #    :license: MIT, see LICENSE for more details.
 
-import zmq
-import tnetstring
 import threading
+from .utilities import _ensure_utf8
+
+try:
+	import zmq
+except ImportError:
+	zmq = None
+
+try:
+	import tnetstring
+except ImportError:
+	tnetstring = None
 
 # The ZmqPubControlClient class allows consumers to publish to a ZMQ endpoint
 # of their choice. The consumer wraps a Format instance in an Item instance
@@ -22,6 +31,10 @@ class ZmqPubControlClient(object):
 	# is done to facilitate PUB socket publishing from the PubControl class).
 	def __init__(self, uri, zmq_push_uri=None, zmq_pub_uri=None,
 			require_subscriptions=False, disable_pub=False):
+		if zmq is None:
+			raise ValueError('zmq package must be installed')
+		if tnetstring is None:
+			raise ValueError('tnetstring package must be installed')
 		self.uri = uri
 		self.zmq_pub_uri = zmq_pub_uri
 		self.zmq_push_uri = zmq_push_uri
@@ -40,22 +53,24 @@ class ZmqPubControlClient(object):
 	# a result that is set to true.
 	def publish(self, channel, item, blocking=False, callback=None):
 		self._connect_zmq()
+		if self._zmq_sock is None:
+			return
 		i = item.export(True, True)
-		try:
-			if isinstance(channel, unicode):
-				channel = channel.encode('utf-8')
-		except NameError:
-			if isinstance(channel, str):
-				channel = channel.encode('utf-8')
+		channel = _ensure_utf8(channel)
 		self._send_to_zmq(i, channel)
 		if callback:
 			callback(True, '')
 
-	# The finish method is not implemented by the ZMQ client but exists here
-	# to facilitate integration with the PubControl class.
-	def finish(self):
-		pass
-
+	# Close the open ZMQ socket in this instance and set the ZMQ context and
+	# socket to None.
+	def close(self):
+		self._lock.acquire()
+		if self._zmq_sock is not None:
+			self._zmq_sock.close()
+			self._zmq_sock = None
+			self._zmq_ctx = None
+		self._lock.release()
+	
 	# An internal method for ensuring that the ZMQ URIs are properly set
 	# relative to the require_subscribers and disable_pub booleans.
 	def _verify_uri_config(self):
@@ -64,24 +79,27 @@ class ZmqPubControlClient(object):
 		if self.zmq_pub_uri is None and self.require_subscriptions:
 			raise ValueError('zmq_pub_uri must be set if require_subscriptions ' +
 					'is set to true')
-		if self.zmq_pub_uri is not None and self.disable_pub:
-			raise ValueError('PUB socket publishing is disabled')
 
 	# An internal method for setting up and connecting to the ZMQ endpoint
 	# depending on the PUSH / PUB configuration.
 	def _connect_zmq(self):
 		self._verify_uri_config()
 		self._lock.acquire()
-		if self._zmq_ctx is None and self._zmq_sock is None:			
-			self._zmq_ctx = zmq.Context()
-			if (self.zmq_pub_uri is not None and
+		if self._zmq_ctx is None and self._zmq_sock is None:
+			if (self.zmq_pub_uri is not None and self.disable_pub is False and
 					(self.zmq_push_uri is None or self.require_subscriptions)):
+				self._zmq_ctx = zmq.Context()
 				self._zmq_sock = self._zmq_ctx.socket(zmq.XPUB)
 				self._zmq_sock.connect(self.zmq_pub_uri)
-			else:
+				self._zmq_sock.linger = 0
+				print 'created push socket in client'
+			elif (self.zmq_push_uri is not None and
+					self.require_subscriptions is False):
+				self._zmq_ctx = zmq.Context()
 				self._zmq_sock = self._zmq_ctx.socket(zmq.PUSH)
 				self._zmq_sock.connect(self.zmq_push_uri)
-			self._zmq_sock.linger = 0
+				self._zmq_sock.linger = 0
+				print 'created push socket in client'
 		self._lock.release()
 		
 	# An internal method for publishing a ZMQ message to the configured ZMQ
@@ -90,5 +108,7 @@ class ZmqPubControlClient(object):
 		if self._zmq_sock.socket_type == zmq.PUSH:
 			content['channel'] = channel
 			self._zmq_sock.send(tnetstring.dumps(content))
+			print 'client push publish'
 		else:
 			self._zmq_sock.send_multipart([channel, tnetstring.dumps(content)])
+			print 'client pub publish'

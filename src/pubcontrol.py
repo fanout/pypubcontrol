@@ -5,8 +5,21 @@
 #    :copyright: (c) 2015 by Fanout, Inc.
 #    :license: MIT, see LICENSE for more details.
 
+import threading
 from .pcccbhandler import PubControlClientCallbackHandler
 from .pubcontrolclient import PubControlClient
+from .zmqpubcontrolclient import ZmqPubControlClient
+from .utilities import _ensure_utf8
+
+try:
+	import zmq
+except ImportError:
+	zmq = None
+
+try:
+	import tnetstring
+except ImportError:
+	tnetstring = None
 
 # The PubControl class allows a consumer to manage a set of publishing
 # endpoints and to publish to all of those endpoints via a single publish
@@ -18,13 +31,24 @@ class PubControl(object):
 	# Initialize with or without a configuration. A configuration can be applied
 	# after initialization via the apply_config method.
 	def __init__(self, config=None):
+		self._lock = threading.Lock()
+		self._zmq_ctx = None
+		self._zmq_sock = None
 		self.clients = list()
 		if config:
 			self.apply_config(config)
 
-	# Remove all of the configured PubControlClient instances.
+	# Remove all of the configured client instances and close all open ZMQ sockets.
 	def remove_all_clients(self):
-		self.clients = list()
+		for client in self.clients:
+			if isinstance(client, ZmqPubControlClient):
+				client.close()
+		self.clients = list()		
+		self._lock.acquire()
+		self._zmq_sock.close()
+		self._zmq_ctx = None
+		self._zmq_sock = None
+		self._lock.release()
 
 	# Add the specified PubControlClient instance.
 	def add_client(self, client):
@@ -34,16 +58,33 @@ class PubControl(object):
 	# configuration object can either be a hash or an array of hashes where
 	# each hash corresponds to a single PubControlClient instance. Each hash
 	# will be parsed and a PubControlClient will be created either using just
-	# a URI or a URI and JWT authentication information.
+	# a URI or a URI and JWT authentication information. If ZMQ endpoint URIs
+	# are provided then a ZmqPubControlClient will be created.
 	def apply_config(self, config):
 		if not isinstance(config, list):
 			config = [config]
 		for entry in config:
-			client = PubControlClient(entry['uri'])
-			if 'iss' in entry:
-				client.set_auth_jwt({'iss': entry['iss']}, entry['key'])
-
-			self.clients.append(client)
+			client = None
+			if 'uri' in entry:
+				client = PubControlClient(entry['uri'])
+				if 'iss' in entry:
+					client.set_auth_jwt({'iss': entry['iss']}, entry['key'])
+			if ('zmq_uri' in entry or 'zmq_push_uri' in entry or
+					'zmq_pub_uri' in entry):
+				if zmq is None:
+					raise ValueError('zmq package must be installed')
+				if tnetstring is None:
+					raise ValueError('tnetstring package must be installed')
+				require_subscribers = entry.get('zmq_require_subscribers')
+				if require_subscribers is None:
+					require_subscribers = False
+				client = ZmqPubControlClient(entry.get('zmq_uri'),
+						entry.get('zmq_push_uri'), entry.get('zmq_pub_uri'),
+						require_subscribers, True)
+				if 'zmq_pub_uri' in entry:
+					self._connect_zmq_pub_uri(entry['zmq_pub_uri'])
+			if client:
+				self.clients.append(client)
 
 	# The publish method for publishing the specified item to the specified
 	# channel on the configured endpoint. The blocking parameter indicates
@@ -64,10 +105,34 @@ class PubControl(object):
 
 			for client in self.clients:
 				client.publish(channel, item, blocking=False, callback=cb)
+		self._send_to_zmq(channel, item)
 
 	# The finish method is a blocking method that ensures that all asynchronous
 	# publishing is complete for all of the configured PubControlClient
 	# instances prior to returning and allowing the consumer to proceed.
 	def finish(self):
 		for client in self.clients:
-			client.finish()
+			if isinstance(client, PubControlClient):
+				client.finish()
+
+	# An internal method for connecting to a ZMQ PUB URI. If necessary a ZMQ
+	# PUB socket will be created.
+	def _connect_zmq_pub_uri(self, uri):
+		self._lock.acquire()
+		if self._zmq_ctx is None and self._zmq_sock is None:			
+			self._zmq_ctx = zmq.Context()
+			self._zmq_sock = self._zmq_ctx.socket(zmq.XPUB)
+			self._zmq_sock.linger = 0
+			print 'created pub socket in pc'
+		self._lock.release()
+		self._zmq_sock.connect(uri)
+		print 'connect uri to pc pub socket'
+
+	# An internal method for sending a ZMQ message to the configured ZMQ PUB
+	# socket and specified channel.
+	def _send_to_zmq(self, channel, item):
+		if self._zmq_sock is not None:
+			channel = _ensure_utf8(channel)
+			content = item.export(True, True)
+			self._zmq_sock.send_multipart([channel, tnetstring.dumps(content)])
+			print 'pub socket publish in pc'
