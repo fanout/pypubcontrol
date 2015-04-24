@@ -58,12 +58,10 @@ class ZmqPubControlClient(object):
 	# a result that is set to true.
 	def publish(self, channel, item, blocking=False, callback=None):
 		self._connect_zmq()
-		self._lock.acquire()
 		if self._zmq_sock is None:
 			if callback:
 				callback(True, '')
 			return
-		self._lock.release()
 		i = item.export(True, True)
 		channel = _ensure_utf8(channel)
 		self._send_to_zmq(i, channel)
