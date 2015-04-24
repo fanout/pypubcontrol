@@ -43,11 +43,13 @@ class ZmqPubControlClient(object):
 		self._verify_uri_config()
 		self._connect_zmq(self.zmq_pub_uri)
 		i = item.export(True, True)
-		i['channel'] = channel
-		content = dict()
-		content['items'] = [i]
-		content_raw = tnetstring.dumps(content)
-		self._send_to_zmq(content_raw)
+		try:
+			if isinstance(channel, unicode):
+				channel = channel.encode('utf-8')
+		except NameError:
+			if isinstance(channel, str):
+				channel = channel.encode('utf-8')
+		self._send_to_zmq(i, channel)
 		if callback:
 			callback(True, '')
 
@@ -81,7 +83,11 @@ class ZmqPubControlClient(object):
 			self._zmq_sock.linger = 0
 		self._lock.release()
 		
-	# An internal method for publishing the ZMQ message to the configured
-	# ZMQ socket.
-	def _send_to_zmq(self, content):
-		self._zmq_sock.send(content)
+	# An internal method for publishing a ZMQ message to the configured ZMQ
+	# socket and specified channel.
+	def _send_to_zmq(self, content, channel):
+		if self._zmq_sock.socket_type == zmq.PUSH:
+			content['channel'] = channel
+			self._zmq_sock.send(tnetstring.dumps(content))
+		else:
+			self._zmq_sock.send_multipart([channel, tnetstring.dumps(content)])

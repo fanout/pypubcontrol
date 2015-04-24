@@ -67,7 +67,7 @@ class Item(object):
 
 	# An internal method for encoding the specified value as UTF8 only
 	# if it is unicode.
-	def _ensure_unicode(value):
+	def _ensure_utf8(value):
 		try:
 			if isinstance(value, unicode):
 				return value.encode('utf-8')
@@ -78,7 +78,7 @@ class Item(object):
 
 	# An internal method for decoding the specified value as UTF8 only
 	# if it is binary.
-	def _ensure_utf8(value):
+	def _ensure_unicode(value):
 		try:
 			if not isinstance(value, unicode):
 				return value.decode('utf-8')
