@@ -60,6 +60,8 @@ class ZmqPubControlClient(object):
 		self._connect_zmq()
 		self._lock.acquire()
 		if self._zmq_sock is None:
+			if callback:
+				callback(True, '')
 			return
 		self._lock.release()
 		i = item.export(True, True)
