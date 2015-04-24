@@ -16,23 +16,22 @@ class ZmqPubControlClient(object):
 
 	# Initialize this class with a URL representing the REQ socket endpoint.
 	# Optionally provide ZMQ PUB and PUSH URI endpoints and a boolean indicating
-	# if publishes should only occur when subscribers are available.
+	# if publishes should only occur when subscribers are available. If the
+	# disable_pub boolean is set then initializing with a PUB socket URI or
+	# attempting to publish on a PUB socket will result in an exception (this
+	# is done to facilitate PUB socket publishing from the PubControl class).
 	def __init__(self, uri, zmq_push_uri=None, zmq_pub_uri=None,
-			require_subscriptions=False):
+			require_subscriptions=False, disable_pub=False):
 		self.uri = uri
 		self.zmq_pub_uri = zmq_pub_uri
 		self.zmq_push_uri = zmq_push_uri
 		self.require_subscriptions = require_subscriptions
+		self.disable_pub = disable_pub
 		self._lock = threading.Lock()
-		if (self.zmq_push_uri is not None and
-				(self.zmq_pub_uri is None or self.require_subscriptions is False)):
-			self._zmq_ctx = zmq.Context()
-			self._zmq_sock = self._zmq_ctx.socket(zmq.PUSH)
-			self._zmq_sock.linger = 0
-			self._zmq_sock.connect(self.zmq_push_uri)
-		else:
-			self._zmq_ctx = None
-			self._zmq_sock = None
+		self._zmq_ctx = None
+		self._zmq_sock = None
+		if self.zmq_push_uri is not None or self.zmq_pub_uri is not None:
+			self._connect_zmq()
 
 	# The publish method for publishing the specified item to the specified
 	# channel on the configured ZMQ endpoint. Note that ZMQ publishes are
@@ -40,8 +39,7 @@ class ZmqPubControlClient(object):
 	# Also, if a callback is specified, the callback will always be called with
 	# a result that is set to true.
 	def publish(self, channel, item, blocking=False, callback=None):
-		self._verify_uri_config()
-		self._connect_zmq(self.zmq_pub_uri)
+		self._connect_zmq()
 		i = item.export(True, True)
 		try:
 			if isinstance(channel, unicode):
@@ -66,10 +64,13 @@ class ZmqPubControlClient(object):
 		if self.zmq_pub_uri is None and self.require_subscriptions:
 			raise ValueError('zmq_pub_uri must be set if require_subscriptions ' +
 					'is set to true')
+		if self.zmq_pub_uri is not None and self.disable_pub:
+			raise ValueError('PUB socket publishing is disabled')
 
 	# An internal method for setting up and connecting to the ZMQ endpoint
 	# depending on the PUSH / PUB configuration.
-	def _connect_zmq(self, uri):		
+	def _connect_zmq(self):
+		self._verify_uri_config()
 		self._lock.acquire()
 		if self._zmq_ctx is None and self._zmq_sock is None:			
 			self._zmq_ctx = zmq.Context()
