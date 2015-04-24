@@ -57,7 +57,7 @@ class ZmqPubControlClient(object):
 		pass
 
 	# An internal method for ensuring that the ZMQ URIs are properly set
-	# relative to the require_subscribers boolean.
+	# relative to the require_subscribers and disable_pub booleans.
 	def _verify_uri_config(self):
 		if self.zmq_pub_uri is None and self.zmq_push_uri is None:
 			raise ValueError('either a zmq pub or push uri must be set to publish')
