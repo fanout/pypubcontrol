@@ -29,8 +29,10 @@ class ZmqPubControlClient(object):
 	# disable_pub boolean is set then initializing with a PUB socket URI or
 	# attempting to publish on a PUB socket will result in an exception (this
 	# is done to facilitate PUB socket publishing from the PubControl class).
+	# Optionally specify a ZMQ context to use otherwise the global ZMQ context
+	# will be used.
 	def __init__(self, uri, zmq_push_uri=None, zmq_pub_uri=None,
-			require_subscriptions=False, disable_pub=False):
+			require_subscriptions=False, disable_pub=False, zmq_context=None):
 		if zmq is None:
 			raise ValueError('zmq package must be installed')
 		if tnetstring is None:
@@ -41,8 +43,11 @@ class ZmqPubControlClient(object):
 		self.require_subscriptions = require_subscriptions
 		self.disable_pub = disable_pub
 		self._lock = threading.Lock()
-		self._zmq_ctx = None
 		self._zmq_sock = None
+		if zmq_context:
+			self._zmq_ctx = zmq_context
+		else:
+			self._zmq_ctx = zmq.Context.instance()
 		if self.zmq_push_uri is not None or self.zmq_pub_uri is not None:
 			self._connect_zmq()
 
@@ -68,7 +73,6 @@ class ZmqPubControlClient(object):
 		if self._zmq_sock is not None:
 			self._zmq_sock.close()
 			self._zmq_sock = None
-			self._zmq_ctx = None
 		self._lock.release()
 	
 	# An internal method for ensuring that the ZMQ URIs are properly set
@@ -85,17 +89,15 @@ class ZmqPubControlClient(object):
 	def _connect_zmq(self):
 		self._verify_uri_config()
 		self._lock.acquire()
-		if self._zmq_ctx is None and self._zmq_sock is None:
+		if self._zmq_sock is None:
 			if (self.zmq_pub_uri is not None and self.disable_pub is False and
 					(self.zmq_push_uri is None or self.require_subscriptions)):
-				self._zmq_ctx = zmq.Context()
 				self._zmq_sock = self._zmq_ctx.socket(zmq.XPUB)
 				self._zmq_sock.connect(self.zmq_pub_uri)
 				self._zmq_sock.linger = 0
 				print 'created push socket in client'
 			elif (self.zmq_push_uri is not None and
 					self.require_subscriptions is False):
-				self._zmq_ctx = zmq.Context()
 				self._zmq_sock = self._zmq_ctx.socket(zmq.PUSH)
 				self._zmq_sock.connect(self.zmq_push_uri)
 				self._zmq_sock.linger = 0

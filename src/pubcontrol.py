@@ -29,11 +29,15 @@ except ImportError:
 class PubControl(object):
 
 	# Initialize with or without a configuration. A configuration can be applied
-	# after initialization via the apply_config method.
-	def __init__(self, config=None):
+	# after initialization via the apply_config method. Optionally specify a ZMQ
+	# context to use.
+	def __init__(self, config=None, zmq_context=None):
 		self._lock = threading.Lock()
-		self._zmq_ctx = None
 		self._zmq_sock = None
+		if zmq_context:
+			self._zmq_ctx = zmq_context
+		else:
+			self._zmq_ctx = zmq.Context.instance()
 		self.clients = list()
 		if config:
 			self.apply_config(config)
@@ -46,7 +50,6 @@ class PubControl(object):
 		self.clients = list()		
 		self._lock.acquire()
 		self._zmq_sock.close()
-		self._zmq_ctx = None
 		self._zmq_sock = None
 		self._lock.release()
 
@@ -80,7 +83,7 @@ class PubControl(object):
 					require_subscribers = False
 				client = ZmqPubControlClient(entry.get('zmq_uri'),
 						entry.get('zmq_push_uri'), entry.get('zmq_pub_uri'),
-						require_subscribers, True)
+						require_subscribers, True, self._zmq_ctx)
 				if 'zmq_pub_uri' in entry:
 					self._connect_zmq_pub_uri(entry['zmq_pub_uri'])
 			if client:
@@ -119,8 +122,7 @@ class PubControl(object):
 	# PUB socket will be created.
 	def _connect_zmq_pub_uri(self, uri):
 		self._lock.acquire()
-		if self._zmq_ctx is None and self._zmq_sock is None:			
-			self._zmq_ctx = zmq.Context()
+		if self._zmq_sock is None:
 			self._zmq_sock = self._zmq_ctx.socket(zmq.XPUB)
 			self._zmq_sock.linger = 0
 			print 'created pub socket in pc'
