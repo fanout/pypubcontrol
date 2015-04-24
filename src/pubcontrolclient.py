@@ -39,7 +39,7 @@ except AttributeError:
 # The PubControlClient class allows consumers to publish either synchronously 
 # or asynchronously to an endpoint of their choice. The consumer wraps a Format
 # class instance in an Item class instance and passes that to the publish
-# methods. The async publish method has an optional callback parameter that
+# method. The async publish method has an optional callback parameter that
 # is called after the publishing is complete to notify the consumer of the
 # result.
 class PubControlClient(object):
