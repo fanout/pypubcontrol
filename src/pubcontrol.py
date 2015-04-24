@@ -25,7 +25,8 @@ except ImportError:
 # endpoints and to publish to all of those endpoints via a single publish
 # or publish_async method call. A PubControl instance can be configured
 # either using a hash or array of hashes containing configuration information
-# or by manually adding PubControlClient instances.
+# or by manually adding either PubControlClient or ZmqPubControlClient
+# instances.
 class PubControl(object):
 
 	# Initialize with or without a configuration. A configuration can be applied
@@ -53,16 +54,14 @@ class PubControl(object):
 		self._zmq_sock = None
 		self._lock.release()
 
-	# Add the specified PubControlClient instance.
+	# Add the specified PubControlClient or ZmqPubControlClient instance.
 	def add_client(self, client):
 		self.clients.append(client)
 
 	# Apply the specified configuration to this PubControl instance. The
 	# configuration object can either be a hash or an array of hashes where
-	# each hash corresponds to a single PubControlClient instance. Each hash
-	# will be parsed and a PubControlClient will be created either using just
-	# a URI or a URI and JWT authentication information. If ZMQ endpoint URIs
-	# are provided then a ZmqPubControlClient will be created.
+	# each hash corresponds to a single PubControlClient or ZmqPubControlClient
+	# instance. Each hash will be parsed and a client instance will be created.
 	def apply_config(self, config):
 		if not isinstance(config, list):
 			config = [config]
@@ -94,8 +93,8 @@ class PubControl(object):
 	# whether the call should be blocking or non-blocking. The callback method
 	# is optional and will be passed the publishing results after publishing is
 	# complete. Note that a failure to publish in any of the configured
-	# PubControlClient instances will result in a failure result being passed
-	# to the callback method along with the first encountered error message.
+	# client instances will result in a failure result being passed to the
+	# callback method along with the first encountered error message.
 	def publish(self, channel, item, blocking=False, callback=None):
 		if blocking:
 			for client in self.clients:
@@ -111,8 +110,8 @@ class PubControl(object):
 		self._send_to_zmq(channel, item)
 
 	# The finish method is a blocking method that ensures that all asynchronous
-	# publishing is complete for all of the configured PubControlClient
-	# instances prior to returning and allowing the consumer to proceed.
+	# publishing is complete for all of the configured client instances prior to
+	# returning and allowing the consumer to proceed.
 	def finish(self):
 		for client in self.clients:
 			if isinstance(client, PubControlClient):
@@ -125,16 +124,15 @@ class PubControl(object):
 		if self._zmq_sock is None:
 			self._zmq_sock = self._zmq_ctx.socket(zmq.XPUB)
 			self._zmq_sock.linger = 0
-			print 'created pub socket in pc'
-		self._lock.release()
 		self._zmq_sock.connect(uri)
-		print 'connect uri to pc pub socket'
+		self._lock.release()
 
 	# An internal method for sending a ZMQ message to the configured ZMQ PUB
 	# socket and specified channel.
 	def _send_to_zmq(self, channel, item):
+		self._lock.acquire()
 		if self._zmq_sock is not None:
 			channel = _ensure_utf8(channel)
 			content = item.export(True, True)
 			self._zmq_sock.send_multipart([channel, tnetstring.dumps(content)])
-			print 'pub socket publish in pc'
+		self._lock.release()

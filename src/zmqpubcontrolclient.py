@@ -58,8 +58,10 @@ class ZmqPubControlClient(object):
 	# a result that is set to true.
 	def publish(self, channel, item, blocking=False, callback=None):
 		self._connect_zmq()
+		self._lock.acquire()
 		if self._zmq_sock is None:
 			return
+		self._lock.release()
 		i = item.export(True, True)
 		channel = _ensure_utf8(channel)
 		self._send_to_zmq(i, channel)
@@ -95,22 +97,20 @@ class ZmqPubControlClient(object):
 				self._zmq_sock = self._zmq_ctx.socket(zmq.XPUB)
 				self._zmq_sock.connect(self.zmq_pub_uri)
 				self._zmq_sock.linger = 0
-				print 'created push socket in client'
 			elif (self.zmq_push_uri is not None and
 					self.require_subscriptions is False):
 				self._zmq_sock = self._zmq_ctx.socket(zmq.PUSH)
 				self._zmq_sock.connect(self.zmq_push_uri)
 				self._zmq_sock.linger = 0
-				print 'created push socket in client'
 		self._lock.release()
 		
 	# An internal method for publishing a ZMQ message to the configured ZMQ
 	# socket and specified channel.
 	def _send_to_zmq(self, content, channel):
+		self._lock.acquire()
 		if self._zmq_sock.socket_type == zmq.PUSH:
 			content['channel'] = channel
 			self._zmq_sock.send(tnetstring.dumps(content))
-			print 'client push publish'
 		else:
 			self._zmq_sock.send_multipart([channel, tnetstring.dumps(content)])
-			print 'client pub publish'
+		self._lock.release()
