@@ -31,10 +31,12 @@ except ImportError:
 class PubControl(object):
 
 	# Initialize with or without a configuration. A configuration can be applied
-	# after initialization via the apply_config method. Optionally specify a ZMQ
-	# context to use.
-	def __init__(self, config=None, zmq_context=None):
+	# after initialization via the apply_config method. Optionally specify a
+	# subscription callback method that will be executed whenever a channel is 
+	# subscribed to or unsubscribed from.Optionally specify a ZMQ context to use.
+	def __init__(self, config=None, sub_callback=None, zmq_context=None):
 		self._lock = threading.Lock()
+		self._sub_callback = sub_callback
 		self._zmq_sub_monitor = None
 		self._zmq_sock = None
 		if zmq_context:
@@ -132,7 +134,9 @@ class PubControl(object):
 		if self._zmq_sock is None:
 			self._zmq_sock = self._zmq_ctx.socket(zmq.XPUB)
 			self._zmq_sock.linger = 0
-			self._zmq_sub_monitor = ZmqSubMonitor(self._zmq_sock)
+			if self._sub_callback:
+				self._zmq_sub_monitor = ZmqSubMonitor(self._zmq_sock,
+						self._lock, self._sub_callback)
 		self._zmq_sock.connect(uri)
 		self._lock.release()
 

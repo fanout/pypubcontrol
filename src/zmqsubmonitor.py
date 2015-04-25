@@ -10,19 +10,28 @@ import zmq
 import time
 import threading
 
-# The ZmqSubMonitor class facilitates the monitoring of channel subscriptions
-# via ZMQ PUB sockets. This class is used by the ZmqPubControlClient and
-# PubControl classes and should not be used directly.
+# The ZmqSubMonitor class facilitates the monitoring of subscriptions via
+# ZMQ PUB sockets.
 class ZmqSubMonitor(object):
 
-	def __init__(self, socket):
-		self.channels = set()
+	# Initialize with a ZMQ PUB socket instance, threading lock, and callback
+	# where the callback accepts two parameters: the first parameter a string
+	# containing 'sub' or 'unsub' and the second parameter containing the
+	# subscription name. The threading lock will be used relative to the
+	# ZMQ socket operations.
+	def __init__(self, socket, lock, callback):
+		self._lock = lock
 		self._socket = socket
+		self._callback = callback
 		self._thread = threading.Thread(target=self._monitor)
 		self._thread.daemon = True
 		self._thread.start()
-		
+	
+	# This method is meant to run a separate thread and poll the ZMQ socket
+	# for subscribe and unsubscribe events. When an event is encountered then
+	# the callback is executed with the event information.
 	def _monitor(self):
+		# TODO: is socket locking necessary here?
 		poller = zmq.Poller()
 		poller.register(self._socket, zmq.POLLIN)
 		while True:
@@ -31,12 +40,12 @@ class ZmqSubMonitor(object):
 			# TODO: Do we need to try - except for socket closed errors?
 			socks = dict(poller.poll())
 			if socks.get(self._socket) == zmq.POLLIN:
+				self._lock.acquire()
 				m = self._socket.recv()
+				self._lock.release()
 				mtype = m[0]
-				channel = m[1:]
+				item = m[1:]
 				if mtype == '\x01':
-					print 'subscribed to ' + channel
-					self.channels.add(channel)
+					self._callback('sub', item)
 				elif mtype == '\x00':
-					print 'unsubscribed from ' + channel
-					self.channels.remove(channel)
+					self._callback('unsub', item)
