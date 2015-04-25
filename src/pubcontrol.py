@@ -66,6 +66,11 @@ class PubControl(object):
 		if not isinstance(config, list):
 			config = [config]
 		for entry in config:
+			if (entry.get('zmq_require_subscribers') is False and
+					'zmq_pub_uri' not in entry):
+				raise ValueError('zmq_pub_uri must be set if require_subscriptions ' +
+						'is set to true')
+		for entry in config:
 			client = None
 			if 'uri' in entry:
 				client = PubControlClient(entry['uri'])
@@ -83,7 +88,8 @@ class PubControl(object):
 				client = ZmqPubControlClient(entry.get('zmq_uri'),
 						entry.get('zmq_push_uri'), entry.get('zmq_pub_uri'),
 						require_subscribers, True, self._zmq_ctx)
-				if 'zmq_pub_uri' in entry:
+				if ('zmq_pub_uri' in entry and
+						(require_subscribers or 'zmq_push_uri' not in entry)):
 					self._connect_zmq_pub_uri(entry['zmq_pub_uri'])
 			if client:
 				self.clients.append(client)
@@ -96,6 +102,7 @@ class PubControl(object):
 	# client instances will result in a failure result being passed to the
 	# callback method along with the first encountered error message.
 	def publish(self, channel, item, blocking=False, callback=None):
+		self._send_to_zmq(channel, item)
 		if blocking:
 			for client in self.clients:
 				client.publish(channel, item, blocking=True)
@@ -107,7 +114,6 @@ class PubControl(object):
 
 			for client in self.clients:
 				client.publish(channel, item, blocking=False, callback=cb)
-		self._send_to_zmq(channel, item)
 
 	# The finish method is a blocking method that ensures that all asynchronous
 	# publishing is complete for all of the configured client instances prior to
