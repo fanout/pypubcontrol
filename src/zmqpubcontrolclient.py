@@ -95,7 +95,7 @@ class ZmqPubControlClient(object):
 				self._zmq_sock.connect(self.zmq_push_uri)
 				self._zmq_sock.linger = 0
 		self._lock.release()
-			
+
 	# An internal method for ensuring that the ZMQ URIs are properly set
 	# relative to the require_subscribers and disable_pub booleans.
 	def _verify_uri_config(self):

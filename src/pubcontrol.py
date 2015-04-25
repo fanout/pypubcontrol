@@ -10,6 +10,7 @@ from .pcccbhandler import PubControlClientCallbackHandler
 from .pubcontrolclient import PubControlClient
 from .zmqpubcontrolclient import ZmqPubControlClient
 from .utilities import _ensure_utf8
+from .zmqsubmonitor import ZmqSubMonitor
 
 try:
 	import zmq
@@ -34,6 +35,7 @@ class PubControl(object):
 	# context to use.
 	def __init__(self, config=None, zmq_context=None):
 		self._lock = threading.Lock()
+		self._zmq_sub_monitor = None
 		self._zmq_sock = None
 		if zmq_context:
 			self._zmq_ctx = zmq_context
@@ -130,6 +132,7 @@ class PubControl(object):
 		if self._zmq_sock is None:
 			self._zmq_sock = self._zmq_ctx.socket(zmq.XPUB)
 			self._zmq_sock.linger = 0
+			self._zmq_sub_monitor = ZmqSubMonitor(self._zmq_sock)
 		self._zmq_sock.connect(uri)
 		self._lock.release()
 
