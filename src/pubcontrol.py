@@ -42,9 +42,10 @@ class PubControl(object):
 		self._sub_callback = sub_callback
 		self._zmq_sub_monitor = None
 		self._zmq_sock = None
+		self._zmq_ctx = None
 		if zmq_context:
 			self._zmq_ctx = zmq_context
-		else:
+		elif zmq:
 			self._zmq_ctx = zmq.Context.instance()
 		self.clients = list()
 		if config:
@@ -55,11 +56,12 @@ class PubControl(object):
 		for client in self.clients:
 			if isinstance(client, ZmqPubControlClient):
 				client.close()
-		self.clients = list()		
-		self._lock.acquire()
-		self._zmq_sock.close()
-		self._zmq_sock = None
-		self._lock.release()
+		self.clients = list()
+		if self._zmq_sock:
+			self._lock.acquire()
+			self._zmq_sock.close()
+			self._zmq_sock = None
+			self._lock.release()
 
 	# Add the specified PubControlClient or ZmqPubControlClient instance.
 	def add_client(self, client):
@@ -131,7 +133,7 @@ class PubControl(object):
 	# returning and allowing the consumer to proceed.
 	def finish(self):
 		for client in self.clients:
-			if isinstance(client, PubControlClient):
+			if not isinstance(client, ZmqPubControlClient):
 				client.finish()
 
 	# An internal method for connecting to a ZMQ PUB URI. If necessary a ZMQ

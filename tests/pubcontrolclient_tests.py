@@ -110,6 +110,7 @@ class TestPubControlClient(unittest.TestCase):
 		self.assertEqual(pcc.auth_basic_pass, None)
 		self.assertEqual(pcc.auth_jwt_claim, None)
 		self.assertEqual(pcc.auth_jwt_key, None)
+		self.assertEqual(pcc._sub_monitor, None)
 		self.assertTrue(pcc.lock != None)
 
 	def test_set_auth_basic(self):

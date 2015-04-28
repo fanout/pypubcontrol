@@ -14,7 +14,7 @@ from src.item import Item
 from src.format import Format
 
 class PubControlClientTestClass(object):
-	def initialize(self):
+	def __init__(self):
 		self.was_finish_called = False
 		self.publish_channel = None
 		self.publish_item = None
@@ -33,6 +33,10 @@ class PubControlClientTestClass(object):
 class TestPubControl(unittest.TestCase):
 	def test_initialize(self):
 		pc = PubControl()
+		self.assertEqual(len(pc.clients), 0)
+		pc = PubControl(None, 'subcallback', 'zmqcontext')
+		self.assertEqual(pc._sub_callback, 'subcallback')
+		self.assertEqual(pc._zmq_ctx, 'zmqcontext')
 		self.assertEqual(len(pc.clients), 0)
 		config = {'uri': 'uri', 'iss': 'iss', 'key': 'key'}
 		pc = PubControl(config)
