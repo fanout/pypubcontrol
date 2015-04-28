@@ -56,6 +56,7 @@ class PubControlClient(object):
 		self.auth_jwt_claim = None
 		self.auth_jwt_key = None
 		self.requests_session = requests.session()
+		self._sub_monitor = None
 
 	# Call this method and pass a username and password to use basic
 	# authentication with the configured endpoint.
