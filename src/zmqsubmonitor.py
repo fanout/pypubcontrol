@@ -20,10 +20,10 @@ class ZmqSubMonitor(object):
 	# subscription name. The threading lock will be used relative to the
 	# ZMQ socket operations.
 	def __init__(self, socket, lock, callback):
+		self.subscriptions = list()
 		self._lock = lock
 		self._socket = socket
 		self._callback = callback
-		self._subs = list()
 		self._thread = threading.Thread(target=self._monitor)
 		self._thread.daemon = True
 		self._thread.start()
@@ -43,14 +43,14 @@ class ZmqSubMonitor(object):
 			if socks.get(self._socket) == zmq.POLLIN:
 				self._lock.acquire()
 				m = self._socket.recv()
-				self._lock.release()
 				mtype = m[0]
 				item = m[1:]
 				if mtype == '\x01':
-					if item not in self._subs:
-						self._subs.append(item)
+					if item not in self.subscriptions:
 						self._callback('sub', item)
+						self.subscriptions.append(item)
 				elif mtype == '\x00':
-					if item in self._subs:
-						self._subs.remove(item)
+					if item in self.subscriptions:
+						self.subscriptions.remove(item)
 					self._callback('unsub', item)
+				self._lock.release()

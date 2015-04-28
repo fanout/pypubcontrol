@@ -98,7 +98,7 @@ class PubControl(object):
 					require_subscribers = False
 				client = ZmqPubControlClient(entry.get('zmq_uri'),
 						entry.get('zmq_push_uri'), entry.get('zmq_pub_uri'),
-						require_subscribers, True, self._zmq_ctx)
+						require_subscribers, True, None, self._zmq_ctx)
 				if ('zmq_pub_uri' in entry and
 						(require_subscribers or 'zmq_push_uri' not in entry)):
 					self._connect_zmq_pub_uri(entry['zmq_pub_uri'])
@@ -155,4 +155,27 @@ class PubControl(object):
 			channel = _ensure_utf8(channel)
 			content = item.export(True, True)
 			self._zmq_sock.send_multipart([channel, tnetstring.dumps(content)])
+		self._lock.release()
+
+	# An internal method used as a callback for the PUB socket ZmqSubMonitor
+	# instance. The purpose of this callback is to aggregate sub and unsub
+	# events coming from the monitor and any clients that have their own
+	# monitor. The consumer's sub_callback is executed when a channel is
+	# first subscribed to for the first time across any clients or when a
+	# channel is unsubscribed to across all clients.
+	# NOTE: This method assumes that a subscription monitor instance will
+	# execute the callback: 1) before adding a subscription to its list
+	# upon a 'sub' event, and 2) after removing a subscription from its
+	# list upon an 'unsub' event.
+	def _submonitor_callback(eventType, chan):
+		self._lock.acquire()
+		executeCallback = True
+		for client in self.clients:
+			if client._sub_monitor is not None:
+				if chan in client._sub_monitor.subscriptions:
+					executeCallback = False
+					break
+		if (executeCallback and
+				chan not in _self._sub_monitor.subscriptions):
+			self._sub_callback(eventType, chan)
 		self._lock.release()
