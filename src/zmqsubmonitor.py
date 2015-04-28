@@ -23,6 +23,7 @@ class ZmqSubMonitor(object):
 		self._lock = lock
 		self._socket = socket
 		self._callback = callback
+		self._subs = list()
 		self._thread = threading.Thread(target=self._monitor)
 		self._thread.daemon = True
 		self._thread.start()
@@ -46,6 +47,10 @@ class ZmqSubMonitor(object):
 				mtype = m[0]
 				item = m[1:]
 				if mtype == '\x01':
-					self._callback('sub', item)
+					if item not in self._subs:
+						self._subs.append(item)
+						self._callback('sub', item)
 				elif mtype == '\x00':
+					if item in self._subs:
+						self._subs.remove(item)
 					self._callback('unsub', item)

@@ -33,7 +33,10 @@ class PubControl(object):
 	# Initialize with or without a configuration. A configuration can be applied
 	# after initialization via the apply_config method. Optionally specify a
 	# subscription callback method that will be executed whenever a channel is 
-	# subscribed to or unsubscribed from.Optionally specify a ZMQ context to use.
+	# subscribed to or unsubscribed from. The callback accepts two parameters:
+	# the first parameter a string containing 'sub' or 'unsub' and the second
+	# parameter containing the channel name. Optionally specify a ZMQ context
+	# to use otherwise the global ZMQ context will be used.
 	def __init__(self, config=None, sub_callback=None, zmq_context=None):
 		self._lock = threading.Lock()
 		self._sub_callback = sub_callback
@@ -66,6 +69,10 @@ class PubControl(object):
 	# configuration object can either be a hash or an array of hashes where
 	# each hash corresponds to a single PubControlClient or ZmqPubControlClient
 	# instance. Each hash will be parsed and a client instance will be created.
+	# Specify a 'uri' hash key along with optional JWT authentication 'iss' and
+	# 'key' hash keys for a PubControlClient configuration. Specify a combination
+	# of 'zmq_uri', 'zmq_pub_uri', or 'zmq_push_uri' hash keys and an optional
+	# 'zmq_require_subscribers' hash key for a ZmqPubControlClient configuration.
 	def apply_config(self, config):
 		if not isinstance(config, list):
 			config = [config]
