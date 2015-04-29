@@ -16,7 +16,7 @@ from src.pubcontrolclient import PubControlClient
 from src.item import Item
 from src.format import Format
 
-class TestClientClass():
+class ClientTestClass():
 	pass
 
 class TestSubMonitorClass():
@@ -36,7 +36,14 @@ class PubControlTestClass(PubControl):
 		self.channel = channel
 		self.item = item
 
-class PubControlClientTestClass(object):
+	def _connect_zmq_pub_uri(self, uri):
+		try:
+			self.connect_uris.append(uri)
+		except:
+			self.connect_uris = list()
+			self.connect_uris.append(uri)
+
+class PubControlClientTestClass():
 	def __init__(self):
 		self.was_finish_called = False
 		self.publish_channel = None
@@ -53,11 +60,11 @@ class PubControlClientTestClass(object):
 		self.publish_blocking = blocking
 		self.publish_callback = callback
 
-class ZmqSocketTestClass(object):
+class ZmqSocketTestClass():
 	def close(self):
 		self.closed = True
 
-class ZmqSocketTestClass2(object):
+class ZmqSocketTestClass2():
 	def __init__(self):
 		self.closed = True
 
@@ -67,14 +74,26 @@ class ZmqSocketTestClass2(object):
 	def connect(self, uri):
 		self.uri = uri
 
-class ZmqContextTestClass(object):
+class ZmqContextTestClass():
 	def socket(self, socket_type):
 		self.socket_type = socket_type
 		return ZmqSocketTestClass2()
 
-class ZmqPubControlClientTestClass(object):
+class ZmqPubControlClientTestClass():
 	def close(self):
 		self.closed = True
+
+class ZmqPubControlClientTestClass2():
+	def __init__(self, uri, zmq_push_uri=None, zmq_pub_uri=None,
+			require_subscribers=False, disable_pub=False, sub_callback=None, 
+			zmq_context=None):
+		self.uri = uri
+		self.zmq_push_uri = zmq_push_uri
+		self.zmq_pub_uri = zmq_pub_uri
+		self.require_subscribers = require_subscribers
+		self.disable_pub = disable_pub
+		self.sub_callback = sub_callback
+		self.zmq_context = zmq_context
 
 class TestPubControl(unittest.TestCase):
 	def test_initialize(self):
@@ -123,10 +142,19 @@ class TestPubControl(unittest.TestCase):
 		config = {'uri': 'uri'}
 		pc.apply_config(config)
 		self.assertEqual(pc.clients[0].uri, 'uri')
-		pc = PubControl()
+		pc = PubControlTestClass()
+		pubcontroltest.ZmqPubControlClient = ZmqPubControlClientTestClass2
 		config = [{'uri': 'uri'},
 				{'uri': 'uri1', 'iss': 'iss1', 'key': 'key1'},
-				{'uri': 'uri2', 'iss': 'iss2', 'key': 'key2'}]
+				{'uri': 'uri2', 'iss': 'iss2', 'key': 'key2'},
+				{'zmq_uri': 'zmq_uri'},
+				{'zmq_push_uri': 'zmq_push_uri'},
+				{'zmq_pub_uri': 'zmq_pub_uri', },
+				{'zmq_uri': 'zmq_uri2', 'zmq_push_uri': 'zmq_push_uri2', 
+						'zmq_pub_uri': 'zmq_pub_uri2'},
+				{'zmq_uri': 'zmq_uri3', 'zmq_push_uri': 'zmq_push_uri3', 
+						'zmq_pub_uri': 'zmq_pub_uri3',
+						'zmq_require_subscribers': True}]
 		pc.apply_config(config)
 		self.assertEqual(pc.clients[0].uri, 'uri')
 		self.assertEqual(pc.clients[0].auth_jwt_claim, None)
@@ -137,6 +165,39 @@ class TestPubControl(unittest.TestCase):
 		self.assertEqual(pc.clients[2].uri, 'uri2')
 		self.assertEqual(pc.clients[2].auth_jwt_claim, {'iss': 'iss2'})
 		self.assertEqual(pc.clients[2].auth_jwt_key, 'key2')
+		self.assertEqual(pc.clients[3].uri, 'zmq_uri')
+		self.assertEqual(pc.clients[3].zmq_pub_uri, None)
+		self.assertTrue(pc.clients[3].disable_pub)
+		self.assertEqual(pc.clients[3].require_subscribers, False)
+		self.assertEqual(pc.clients[3].sub_callback, None)
+		self.assertEqual(pc.clients[3].zmq_context, pc._zmq_ctx)
+		self.assertEqual(pc.clients[4].zmq_push_uri, 'zmq_push_uri')
+		self.assertTrue(pc.clients[4].disable_pub)
+		self.assertEqual(pc.clients[4].require_subscribers, False)
+		self.assertEqual(pc.clients[4].sub_callback, None)
+		self.assertEqual(pc.clients[4].zmq_context, pc._zmq_ctx)
+		self.assertEqual(pc.clients[5].zmq_pub_uri, 'zmq_pub_uri')
+		self.assertTrue(pc.clients[5].disable_pub)
+		self.assertEqual(pc.clients[5].require_subscribers, False)
+		self.assertEqual(pc.clients[5].sub_callback, None)
+		self.assertEqual(pc.clients[5].zmq_context, pc._zmq_ctx)
+		self.assertEqual(pc.clients[6].uri, 'zmq_uri2')
+		self.assertEqual(pc.clients[6].zmq_push_uri, 'zmq_push_uri2')
+		self.assertEqual(pc.clients[6].zmq_pub_uri, 'zmq_pub_uri2')
+		self.assertTrue(pc.clients[6].disable_pub)
+		self.assertEqual(pc.clients[6].require_subscribers, False)
+		self.assertEqual(pc.clients[6].sub_callback, None)
+		self.assertEqual(pc.clients[6].zmq_context, pc._zmq_ctx)
+		self.assertEqual(pc.clients[7].uri, 'zmq_uri3')
+		self.assertEqual(pc.clients[7].zmq_push_uri, 'zmq_push_uri3')
+		self.assertEqual(pc.clients[7].zmq_pub_uri, 'zmq_pub_uri3')
+		self.assertTrue(pc.clients[7].disable_pub)
+		self.assertEqual(pc.clients[7].require_subscribers, True)
+		self.assertEqual(pc.clients[7].sub_callback, None)
+		self.assertEqual(pc.clients[7].zmq_context, pc._zmq_ctx)
+		self.assertEqual(len(pc.connect_uris), 2)
+		self.assertEqual(pc.connect_uris[0], 'zmq_pub_uri')
+		self.assertEqual(pc.connect_uris[1], 'zmq_pub_uri3')
 
 	def test_apply_config_exception1(self):
 		pubcontroltest.zmq = None
@@ -266,7 +327,7 @@ class TestPubControl(unittest.TestCase):
 		pc._sub_monitor.subscriptions.append('chan')
 		pc._submonitor_callback('eventType', 'chan')
 		self.assertFalse(self.sub_callback_executed)
-		client = TestClientClass()
+		client = ClientTestClass()
 		client._sub_monitor = TestSubMonitorClass()
 		client._sub_monitor.subscriptions.append('chan2')
 		pc.add_client(client)
