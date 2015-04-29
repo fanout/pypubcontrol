@@ -54,7 +54,7 @@ class PubControl(object):
 	# Remove all of the configured client instances and close all open ZMQ sockets.
 	def remove_all_clients(self):
 		for client in self.clients:
-			if isinstance(client, ZmqPubControlClient):
+			if not isinstance(client, PubControlClient):
 				client.close()
 		self.clients = list()
 		if self._zmq_sock:
