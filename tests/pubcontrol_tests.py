@@ -16,6 +16,13 @@ from src.pubcontrolclient import PubControlClient
 from src.item import Item
 from src.format import Format
 
+class TestClientClass():
+	pass
+
+class TestSubMonitorClass():
+	def __init__(self):
+		self.subscriptions = list()
+
 class TestFormatSubClass(Format):
 	def name(self):
 		return 'name'
@@ -50,6 +57,10 @@ class ZmqSocketTestClass(object):
 	def close(self):
 		self.closed = True
 
+class ZmqSocketTestClass2(object):
+	def __init__(self):
+		self.closed = True
+
 	def send_multipart(self, data):
 		self.data = data
 
@@ -59,7 +70,7 @@ class ZmqSocketTestClass(object):
 class ZmqContextTestClass(object):
 	def socket(self, socket_type):
 		self.socket_type = socket_type
-		return ZmqSocketTestClass()
+		return ZmqSocketTestClass2()
 
 class ZmqPubControlClientTestClass(object):
 	def close(self):
@@ -212,7 +223,7 @@ class TestPubControl(unittest.TestCase):
 	def test_send_to_zmq(self):
 		pc = PubControl()
 		pc._send_to_zmq('chan', Item(TestFormatSubClass()))
-		pc._zmq_sock = ZmqSocketTestClass()
+		pc._zmq_sock = ZmqSocketTestClass2()
 		fmt = TestFormatSubClass()
 		pc._send_to_zmq('chan', Item(fmt))
 		self.assertTrue(fmt.tnetstring)
@@ -241,6 +252,36 @@ class TestPubControl(unittest.TestCase):
 		self.assertEqual(pc._zmq_sub_monitor._lock, pc._lock)
 		self.assertEqual(pc._zmq_sub_monitor._callback, pc._sub_callback)
 		self.assertEqual(pc._zmq_ctx.socket_type, zmq.XPUB)
+
+	def test_submonitor_callback(self):
+		pc = PubControl()
+		pc._sub_callback = self.sub_callback_for_testing
+		pc._sub_monitor = TestSubMonitorClass()
+		self.clear_sub_callback_for_testing()
+		pc._submonitor_callback('eventType', 'chan')
+		self.assertTrue(self.sub_callback_executed)
+		self.assertEqual(self.sub_chan, 'chan')
+		self.assertEqual(self.sub_eventType, 'eventType')
+		self.clear_sub_callback_for_testing()
+		pc._sub_monitor.subscriptions.append('chan')
+		pc._submonitor_callback('eventType', 'chan')
+		self.assertFalse(self.sub_callback_executed)
+		client = TestClientClass()
+		client._sub_monitor = TestSubMonitorClass()
+		client._sub_monitor.subscriptions.append('chan2')
+		pc.add_client(client)
+		pc._submonitor_callback('eventType', 'chan2')
+		self.assertFalse(self.sub_callback_executed)
+
+	def sub_callback_for_testing(self, eventType, chan):
+		self.sub_eventType = eventType
+		self.sub_chan = chan
+		self.sub_callback_executed = True
+
+	def clear_sub_callback_for_testing(self):
+		self.sub_ventType = None
+		self.sub_chan = None
+		self.sub_callback_executed = False
 
 if __name__ == '__main__':
 		unittest.main()

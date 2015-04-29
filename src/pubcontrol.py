@@ -169,7 +169,7 @@ class PubControl(object):
 	# execute the callback: 1) before adding a subscription to its list
 	# upon a 'sub' event, and 2) after removing a subscription from its
 	# list upon an 'unsub' event.
-	def _submonitor_callback(eventType, chan):
+	def _submonitor_callback(self, eventType, chan):
 		self._lock.acquire()
 		executeCallback = True
 		for client in self.clients:
@@ -178,6 +178,6 @@ class PubControl(object):
 					executeCallback = False
 					break
 		if (executeCallback and
-				chan not in _self._sub_monitor.subscriptions):
+				chan not in self._sub_monitor.subscriptions):
 			self._sub_callback(eventType, chan)
 		self._lock.release()
