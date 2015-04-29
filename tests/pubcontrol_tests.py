@@ -128,7 +128,7 @@ class TestPubControl(unittest.TestCase):
 		pc.clients.append(zmqclient)
 		pc.remove_all_clients()
 		self.assertTrue(sock.closed)
-		self.assertTrue(zmqclient)
+		self.assertTrue(zmqclient.closed)
 		self.assertEqual(len(pc.clients), 0)
 		self.assertEqual(pc._zmq_sock, None)
 
@@ -214,6 +214,12 @@ class TestPubControl(unittest.TestCase):
 		with self.assertRaises(ValueError):
 			pc.apply_config(config)
 		pubcontroltest.tnetstring = tnetstring
+
+	def test_apply_config_exception3(self):
+		pc = pubcontroltest.PubControl()
+		config = [{'zmq_require_subscribers': True}]
+		with self.assertRaises(ValueError):
+			pc.apply_config(config)
 
 	def test_finish(self):
 		pc = PubControl()

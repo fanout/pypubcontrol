@@ -54,7 +54,7 @@ class PubControl(object):
 	# Remove all of the configured client instances and close all open ZMQ sockets.
 	def remove_all_clients(self):
 		for client in self.clients:
-			if not isinstance(client, PubControlClient):
+			if 'ZmqPubControlClient' in client.__class__.__name__:
 				client.close()
 		self.clients = list()
 		if self._zmq_sock:
@@ -79,7 +79,7 @@ class PubControl(object):
 		if not isinstance(config, list):
 			config = [config]
 		for entry in config:
-			if (entry.get('zmq_require_subscribers') is False and
+			if (entry.get('zmq_require_subscribers') is True and
 					'zmq_pub_uri' not in entry):
 				raise ValueError('zmq_pub_uri must be set if require_subscriptions ' +
 						'is set to true')
@@ -133,7 +133,7 @@ class PubControl(object):
 	# returning and allowing the consumer to proceed.
 	def finish(self):
 		for client in self.clients:
-			if not isinstance(client, ZmqPubControlClient):
+			if 'ZmqPubControlClient' not in client.__class__.__name__:
 				client.finish()
 
 	# An internal method for connecting to a ZMQ PUB URI. If necessary a ZMQ
