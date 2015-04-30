@@ -7,6 +7,7 @@
 
 import threading
 from .utilities import _ensure_utf8
+from .zmqsubmonitor import ZmqSubMonitor
 
 try:
 	import zmq

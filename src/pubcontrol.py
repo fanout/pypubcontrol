@@ -25,7 +25,7 @@ except ImportError:
 # The PubControl class allows a consumer to manage a set of publishing
 # endpoints and to publish to all of those endpoints via a single publish
 # or publish_async method call. A PubControl instance can be configured
-# either using a hash or array of hashes containing configuration information
+# either using a dict or array of dicts containing configuration information
 # or by manually adding either PubControlClient or ZmqPubControlClient
 # instances.
 class PubControl(object):
@@ -63,18 +63,19 @@ class PubControl(object):
 			self._zmq_sock = None
 			self._lock.release()
 
-	# Add the specified PubControlClient or ZmqPubControlClient instance.
+	# Add the specified PubControlClient or ZmqPubControlClient instance to
+	# the list of clients.
 	def add_client(self, client):
 		self.clients.append(client)
 
 	# Apply the specified configuration to this PubControl instance. The
-	# configuration object can either be a hash or an array of hashes where
-	# each hash corresponds to a single PubControlClient or ZmqPubControlClient
-	# instance. Each hash will be parsed and a client instance will be created.
-	# Specify a 'uri' hash key along with optional JWT authentication 'iss' and
-	# 'key' hash keys for a PubControlClient configuration. Specify a combination
-	# of 'zmq_uri', 'zmq_pub_uri', or 'zmq_push_uri' hash keys and an optional
-	# 'zmq_require_subscribers' hash key for a ZmqPubControlClient configuration.
+	# configuration object can either be a dict or an array of dicts where
+	# each dict corresponds to a single PubControlClient or ZmqPubControlClient
+	# instance. Each dict will be parsed and a client instance will be created.
+	# Specify a 'uri' dict key along with optional JWT authentication 'iss' and
+	# 'key' dict keys for a PubControlClient configuration. Specify a combination
+	# of 'zmq_uri', 'zmq_pub_uri', or 'zmq_push_uri' dict keys and an optional
+	# 'zmq_require_subscribers' dict key for a ZmqPubControlClient configuration.
 	def apply_config(self, config):
 		if not isinstance(config, list):
 			config = [config]

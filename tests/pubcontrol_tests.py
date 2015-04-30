@@ -325,23 +325,23 @@ class TestPubControl(unittest.TestCase):
 		pc._sub_callback = self.sub_callback_for_testing
 		pc._sub_monitor = TestSubMonitorClass()
 		self.clear_sub_callback_for_testing()
-		pc._submonitor_callback('eventType', 'chan')
+		pc._submonitor_callback('event_type', 'chan')
 		self.assertTrue(self.sub_callback_executed)
 		self.assertEqual(self.sub_chan, 'chan')
-		self.assertEqual(self.sub_eventType, 'eventType')
+		self.assertEqual(self.sub_event_type, 'event_type')
 		self.clear_sub_callback_for_testing()
 		pc._sub_monitor.subscriptions.append('chan')
-		pc._submonitor_callback('eventType', 'chan')
+		pc._submonitor_callback('event_type', 'chan')
 		self.assertFalse(self.sub_callback_executed)
 		client = ClientTestClass()
 		client._sub_monitor = TestSubMonitorClass()
 		client._sub_monitor.subscriptions.append('chan2')
 		pc.add_client(client)
-		pc._submonitor_callback('eventType', 'chan2')
+		pc._submonitor_callback('event_type', 'chan2')
 		self.assertFalse(self.sub_callback_executed)
 
-	def sub_callback_for_testing(self, eventType, chan):
-		self.sub_eventType = eventType
+	def sub_callback_for_testing(self, event_type, chan):
+		self.sub_event_type = event_type
 		self.sub_chan = chan
 		self.sub_callback_executed = True
 
