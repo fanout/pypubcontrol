@@ -10,7 +10,7 @@ from .pcccbhandler import PubControlClientCallbackHandler
 from .pubcontrolclient import PubControlClient
 from .zmqpubcontrolclient import ZmqPubControlClient
 from .utilities import _ensure_utf8
-from .zmqsubmonitor import ZmqSubMonitor
+from .zmqpubcontroller import ZmqPubController
 
 try:
 	import zmq
@@ -40,8 +40,9 @@ class PubControl(object):
 	def __init__(self, config=None, sub_callback=None, zmq_context=None):
 		self._lock = threading.Lock()
 		self._sub_callback = sub_callback
-		self._zmq_sub_monitor = None
-		self._zmq_sock = None
+		self._zmq_pub_controller = None
+		self._control_sock = None
+		self._control_sock_uri = 'inproc://pubcontrol-xpub-' + id(self)
 		self._zmq_ctx = None
 		if zmq_context:
 			self._zmq_ctx = zmq_context
@@ -57,11 +58,10 @@ class PubControl(object):
 			if 'ZmqPubControlClient' in client.__class__.__name__:
 				client.close()
 		self.clients = list()
-		if self._zmq_sock:
-			self._lock.acquire()
-			self._zmq_sock.close()
-			self._zmq_sock = None
-			self._lock.release()
+		if self._zmq_pub_controller:
+			self._control_sock.send('\x03')
+			self._zmq_pub_controller._thread.join()
+			self._zmq_pub_controller = None
 
 	# Add the specified PubControlClient or ZmqPubControlClient instance to
 	# the list of clients.
@@ -125,42 +125,54 @@ class PubControl(object):
 				cb = PubControlClientCallbackHandler(len(self.clients), callback).handler
 			else:
 				cb = None
-
 			for client in self.clients:
 				client.publish(channel, item, blocking=False, callback=cb)
 
-	# The finish method is a blocking method that ensures that all asynchronous
-	# publishing is complete for all of the configured client instances prior to
-	# returning and allowing the consumer to proceed.
-	def finish(self):
+	# The close method is a blocking call that closes all ZMQ sockets and
+	# ensures that all PubControlClient async publishing is completed prior
+	# to returning and allowing the consumer to proceed.
+	def close(self):
+		self.wait_all_sent()
+		# TODO: Implement.
+
+	# This method is a blocking method that ensures that all asynchronous
+	# publishing is complete for all of the configured client instances prior
+	# to returning and allowing the consumer to proceed.
+	# NOTE: This only applies to PubControlClient and not ZmqPubControlClient
+	# since all ZMQ socket operations are non-blocking.
+	def wait_all_sent(self):
 		for client in self.clients:
 			if 'ZmqPubControlClient' not in client.__class__.__name__:
 				client.finish()
+
+	# DEPRECATED: The finish method is now deprecated in favor of the more
+	# descriptive wait_all_sent() method.
+	def finish(self):
+		self.wait_all_sent()
 
 	# An internal method for connecting to a ZMQ PUB URI. If necessary a ZMQ
 	# PUB socket will be created.
 	def _connect_zmq_pub_uri(self, uri):
 		self._lock.acquire()
-		if self._zmq_sock is None:
-			self._zmq_sock = self._zmq_ctx.socket(zmq.XPUB)
-			self._zmq_sock.linger = 0
-			if self._sub_callback:
-				self._zmq_sub_monitor = ZmqSubMonitor(self._zmq_sock,
-						self._lock, self._sub_callback)
-		self._zmq_sock.connect(uri)
+		if not self._zmq_pub_controller and self._sub_callback:
+			self._control_sock = self._zmq_ctx.socket(zmq.PAIR)
+			self._control_sock.linger = 0
+			self._control_sock.connect(self._control_sock_uri)
+			self._zmq_pub_controller = ZmqPubController(
+					self._control_sock_uri, self._sub_callback,
+					self._zmq_ctx)
 		self._lock.release()
+		self._control_sock.send('\x00' + uri)
 
 	# An internal method for sending a ZMQ message to the configured ZMQ PUB
 	# socket and specified channel.
 	def _send_to_zmq(self, channel, item):
-		self._lock.acquire()
-		if self._zmq_sock is not None:
+		if not self._zmq_pub_controller:
 			channel = _ensure_utf8(channel)
 			content = item.export(True, True)
-			self._zmq_sock.send_multipart([channel, tnetstring.dumps(content)])
-		self._lock.release()
+			self._control_sock.send('\x00' + channel + '\x00' + content)
 
-	# An internal method used as a callback for the PUB socket ZmqSubMonitor
+	# An internal method used as a callback for the ZmqPubController
 	# instance. The purpose of this callback is to aggregate sub and unsub
 	# events coming from the monitor and any clients that have their own
 	# monitor. The consumer's sub_callback is executed when a channel is
@@ -170,15 +182,13 @@ class PubControl(object):
 	# execute the callback: 1) before adding a subscription to its list
 	# upon a 'sub' event, and 2) after removing a subscription from its
 	# list upon an 'unsub' event.
-	def _submonitor_callback(self, eventType, chan):
-		self._lock.acquire()
+	def _pub_controller_callback(self, eventType, chan):
 		executeCallback = True
 		for client in self.clients:
-			if client._sub_monitor is not None:
+			if client._zmq_pub_controller is not None:
 				if chan in client._sub_monitor.subscriptions:
 					executeCallback = False
 					break
 		if (executeCallback and
-				chan not in self._sub_monitor.subscriptions):
+				chan not in self._zmq_pub_controller.subscriptions):
 			self._sub_callback(eventType, chan)
-		self._lock.release()
