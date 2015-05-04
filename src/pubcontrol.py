@@ -42,30 +42,30 @@ class PubControl(object):
 		self._sub_callback = sub_callback
 		self._zmq_pub_controller = None
 		self._control_sock = None
-		self._control_sock_uri = 'inproc://pubcontrol-xpub-' + id(self)
+		self._control_sock_uri = 'inproc://pubcontrol-xpub-' + str(id(self))
 		self._zmq_ctx = None
 		if zmq_context:
 			self._zmq_ctx = zmq_context
 		elif zmq:
 			self._zmq_ctx = zmq.Context.instance()
 		self.clients = list()
+		self.closed = False
 		if config:
 			self.apply_config(config)
 
 	# Remove all of the configured client instances and close all open ZMQ sockets.
 	def remove_all_clients(self):
+		self._verify_not_closed()
 		for client in self.clients:
 			if 'ZmqPubControlClient' in client.__class__.__name__:
 				client.close()
 		self.clients = list()
-		if self._zmq_pub_controller:
-			self._control_sock.send('\x03')
-			self._zmq_pub_controller._thread.join()
-			self._zmq_pub_controller = None
+		self._close_zmq_pub_controller()
 
 	# Add the specified PubControlClient or ZmqPubControlClient instance to
 	# the list of clients.
 	def add_client(self, client):
+		self._verify_not_closed()
 		self.clients.append(client)
 
 	# Apply the specified configuration to this PubControl instance. The
@@ -77,6 +77,7 @@ class PubControl(object):
 	# of 'zmq_uri', 'zmq_pub_uri', or 'zmq_push_uri' dict keys and an optional
 	# 'zmq_require_subscribers' dict key for a ZmqPubControlClient configuration.
 	def apply_config(self, config):
+		self._verify_not_closed()
 		if not isinstance(config, list):
 			config = [config]
 		for entry in config:
@@ -116,6 +117,7 @@ class PubControl(object):
 	# client instances will result in a failure result being passed to the
 	# callback method along with the first encountered error message.
 	def publish(self, channel, item, blocking=False, callback=None):
+		self._verify_not_closed()
 		self._send_to_zmq(channel, item)
 		if blocking:
 			for client in self.clients:
@@ -132,8 +134,16 @@ class PubControl(object):
 	# ensures that all PubControlClient async publishing is completed prior
 	# to returning and allowing the consumer to proceed.
 	def close(self):
+		self._verify_not_closed()
 		self.wait_all_sent()
-		# TODO: Implement.
+		for client in self.clients:
+			if 'ZmqPubControlClient' in client.__class__.__name__:
+				client.close()
+		self._close_zmq_pub_controller()
+		if self._control_sock is not None:
+			self._control_sock.close()
+			self._control_sock = None
+		self.closed = True
 
 	# This method is a blocking method that ensures that all asynchronous
 	# publishing is complete for all of the configured client instances prior
@@ -141,6 +151,7 @@ class PubControl(object):
 	# NOTE: This only applies to PubControlClient and not ZmqPubControlClient
 	# since all ZMQ socket operations are non-blocking.
 	def wait_all_sent(self):
+		self._verify_not_closed()
 		for client in self.clients:
 			if 'ZmqPubControlClient' not in client.__class__.__name__:
 				client.finish()
@@ -148,15 +159,19 @@ class PubControl(object):
 	# DEPRECATED: The finish method is now deprecated in favor of the more
 	# descriptive wait_all_sent() method.
 	def finish(self):
+		self._verify_not_closed()
 		self.wait_all_sent()
 
-	# An internal method for connecting to a ZMQ PUB URI. If necessary a ZMQ
-	# PUB socket will be created.
+	# An internal method for connecting to a ZMQ PUB URI. If necessary a
+	# ZmqPubController instance will be created along with a corresponding
+	# control socket. The ZmqPubController is responsible for maintaining
+	# and publishing to the PUB socket.
 	def _connect_zmq_pub_uri(self, uri):
 		self._lock.acquire()
-		if not self._zmq_pub_controller and self._sub_callback:
+		if self._zmq_pub_controller is None:
 			self._control_sock = self._zmq_ctx.socket(zmq.PAIR)
 			self._control_sock.linger = 0
+			print self._control_sock_uri
 			self._control_sock.connect(self._control_sock_uri)
 			self._zmq_pub_controller = ZmqPubController(
 					self._control_sock_uri, self._sub_callback,
@@ -167,10 +182,11 @@ class PubControl(object):
 	# An internal method for sending a ZMQ message to the configured ZMQ PUB
 	# socket and specified channel.
 	def _send_to_zmq(self, channel, item):
-		if not self._zmq_pub_controller:
+		if self._control_sock is not None:
 			channel = _ensure_utf8(channel)
 			content = item.export(True, True)
-			self._control_sock.send('\x00' + channel + '\x00' + content)
+			self._control_sock.send('\x02' + channel +
+					'\x00' + tnetstring.dumps(content))
 
 	# An internal method used as a callback for the ZmqPubController
 	# instance. The purpose of this callback is to aggregate sub and unsub
@@ -192,3 +208,18 @@ class PubControl(object):
 		if (executeCallback and
 				chan not in self._zmq_pub_controller.subscriptions):
 			self._sub_callback(eventType, chan)
+
+	# An internal method for verifying that the PubControl instance has
+	# not been closed via the close() method. If it has then an error
+	# is raised.
+	def _verify_not_closed(self):
+		if self.closed:
+			raise ValueError('pubcontrol instance is closed')
+
+	# An internal method for closing the ZmqPubController instance by
+	# sending a 'close' control message and joining its monitor thread.
+	def _close_zmq_pub_controller(self):
+		if self._zmq_pub_controller:
+			self._control_sock.send('\x03')
+			self._zmq_pub_controller._thread.join()
+			self._zmq_pub_controller = None
