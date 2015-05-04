@@ -27,7 +27,8 @@ except ImportError:
 # or publish_async method call. A PubControl instance can be configured
 # either using a dict or array of dicts containing configuration information
 # or by manually adding either PubControlClient or ZmqPubControlClient
-# instances.
+# instances. Note that a PubControl instance that has been closed via the
+# 'close' method will raise an exception if it is used.
 class PubControl(object):
 
 	# Initialize with or without a configuration. A configuration can be applied
@@ -100,7 +101,6 @@ class PubControl(object):
 				require_subscribers = entry.get('zmq_require_subscribers')
 				if require_subscribers is None:
 					require_subscribers = False
-				print 'creating client'
 				client = ZmqPubControlClient(entry.get('zmq_uri'),
 						entry.get('zmq_push_uri'), entry.get('zmq_pub_uri'),
 						require_subscribers, True, None, self._zmq_ctx)
@@ -125,7 +125,8 @@ class PubControl(object):
 				client.publish(channel, item, blocking=True)
 		else:
 			if callback is not None:
-				cb = PubControlClientCallbackHandler(len(self.clients), callback).handler
+				cb = PubControlClientCallbackHandler(len(self.clients),
+						callback).handler
 			else:
 				cb = None
 			for client in self.clients:
@@ -133,7 +134,8 @@ class PubControl(object):
 
 	# The close method is a blocking call that closes all ZMQ sockets and
 	# ensures that all PubControlClient async publishing is completed prior
-	# to returning and allowing the consumer to proceed.
+	# to returning and allowing the consumer to proceed. Note that the
+	# PubControl instance cannot be used after calling this method.
 	def close(self):
 		self._verify_not_closed()
 		self.wait_all_sent()
@@ -172,7 +174,6 @@ class PubControl(object):
 		if self._zmq_pub_controller is None:
 			self._control_sock = self._zmq_ctx.socket(zmq.PAIR)
 			self._control_sock.linger = 0
-			print self._control_sock_uri
 			self._control_sock.connect(self._control_sock_uri)
 			self._zmq_pub_controller = ZmqPubController(
 					self._control_sock_uri, self._sub_callback,
