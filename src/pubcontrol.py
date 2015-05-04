@@ -143,9 +143,6 @@ class PubControl(object):
 			if 'ZmqPubControlClient' in client.__class__.__name__:
 				client.close()
 		self._close_zmq_pub_controller()
-		if self._control_sock is not None:
-			self._control_sock.close()
-			self._control_sock = None
 		self.closed = True
 
 	# This method is a blocking method that ensures that all asynchronous
@@ -174,7 +171,7 @@ class PubControl(object):
 		if self._zmq_pub_controller is None:
 			self._control_sock = self._zmq_ctx.socket(zmq.PAIR)
 			self._control_sock.linger = 0
-			self._control_sock.connect(self._control_sock_uri)
+			self._control_sock.bind(self._control_sock_uri)
 			self._zmq_pub_controller = ZmqPubController(
 					self._control_sock_uri, self._sub_callback,
 					self._zmq_ctx)
@@ -225,3 +222,5 @@ class PubControl(object):
 			self._control_sock.send('\x03')
 			self._zmq_pub_controller._thread.join()
 			self._zmq_pub_controller = None
+			self._control_sock.close()
+			self._control_sock = None

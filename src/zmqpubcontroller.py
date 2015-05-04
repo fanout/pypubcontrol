@@ -55,7 +55,7 @@ class ZmqPubController(object):
 	def _setup_control_socket(self):
 		self._control_sock = self._context.socket(zmq.PAIR)
 		self._control_sock.linger = 0
-		self._control_sock.bind(self._control_sock_uri)
+		self._control_sock.connect(self._control_sock_uri)
 		self._poller.register(self._control_sock, zmq.POLLIN)
 
 	# An internal method for setting up the pub socket. This method does
