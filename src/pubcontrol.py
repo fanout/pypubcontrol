@@ -100,6 +100,7 @@ class PubControl(object):
 				require_subscribers = entry.get('zmq_require_subscribers')
 				if require_subscribers is None:
 					require_subscribers = False
+				print 'creating client'
 				client = ZmqPubControlClient(entry.get('zmq_uri'),
 						entry.get('zmq_push_uri'), entry.get('zmq_pub_uri'),
 						require_subscribers, True, None, self._zmq_ctx)
@@ -179,8 +180,8 @@ class PubControl(object):
 		self._lock.release()
 		self._control_sock.send('\x00' + uri)
 
-	# An internal method for sending a ZMQ message to the configured ZMQ PUB
-	# socket and specified channel.
+	# An internal method for sending a ZMQ message for publishing to the
+	# ZmqPubController via the control socket.
 	def _send_to_zmq(self, channel, item):
 		if self._control_sock is not None:
 			channel = _ensure_utf8(channel)
@@ -194,7 +195,7 @@ class PubControl(object):
 	# monitor. The consumer's sub_callback is executed when a channel is
 	# first subscribed to for the first time across any clients or when a
 	# channel is unsubscribed to across all clients.
-	# NOTE: This method assumes that a subscription monitor instance will
+	# NOTE: This method assumes that the ZmqPubController instance will
 	# execute the callback: 1) before adding a subscription to its list
 	# upon a 'sub' event, and 2) after removing a subscription from its
 	# list upon an 'unsub' event.

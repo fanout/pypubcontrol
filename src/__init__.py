@@ -11,5 +11,5 @@ from .format import Format
 from .pubcontrolclient import PubControlClient
 from .zmqpubcontrolclient import ZmqPubControlClient
 from .pubcontrol import PubControl
-from .zmqsubmonitor import ZmqSubMonitor
+from .zmqpubcontroller import ZmqPubController
 

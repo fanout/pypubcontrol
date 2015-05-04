@@ -7,7 +7,7 @@
 
 import threading
 from .utilities import _ensure_utf8
-from .zmqsubmonitor import ZmqSubMonitor
+from .zmqpubcontroller import ZmqPubController
 
 try:
 	import zmq
@@ -35,6 +35,7 @@ class ZmqPubControlClient(object):
 	def __init__(self, uri, zmq_push_uri=None, zmq_pub_uri=None,
 			require_subscribers=False, disable_pub=False, sub_callback=None, 
 			zmq_context=None):
+		return
 		if zmq is None:
 			raise ValueError('zmq package must be installed')
 		if tnetstring is None:
@@ -61,6 +62,7 @@ class ZmqPubControlClient(object):
 	# Also, if a callback is specified, the callback will always be called with
 	# a result that is set to true.
 	def publish(self, channel, item, blocking=False, callback=None):
+		return
 		self.connect_zmq()
 		if self._zmq_sock is None:
 			if callback:
@@ -75,6 +77,7 @@ class ZmqPubControlClient(object):
 	# Close the open ZMQ socket in this instance and set the ZMQ context and
 	# socket to None.
 	def close(self):
+		return
 		self._lock.acquire()
 		if self._zmq_sock is not None:
 			self._zmq_sock.close()
