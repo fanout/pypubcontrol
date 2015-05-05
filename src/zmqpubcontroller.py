@@ -44,9 +44,7 @@ class ZmqPubController(object):
 				self._pub_sock.close()
 				self._control_sock.close()
 				return
-			print 'about to poll'
 			socks = self._poller.poll()
-			print 'returned from poll'
 			self._process_pub_sock_messages(socks)
 			self._process_control_sock_messages(socks)
 

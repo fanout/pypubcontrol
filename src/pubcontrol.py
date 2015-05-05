@@ -6,6 +6,7 @@
 #    :license: MIT, see LICENSE for more details.
 
 import threading
+import atexit
 from .pcccbhandler import PubControlClientCallbackHandler
 from .pubcontrolclient import PubControlClient
 from .zmqpubcontrolclient import ZmqPubControlClient
@@ -21,6 +22,22 @@ try:
 	import tnetstring
 except ImportError:
 	tnetstring = None
+
+# The global list of PubControl instances used to ensure that each instance
+# is properly closed on exit.
+_pubcontrols = list()
+_lock = threading.Lock()
+
+# An internal method used for closing all existing PubControl instances.
+def _close_pubcontrols():
+	_lock.acquire()
+	for pubcontrol in _pubcontrols:
+		pubcontrol.close()
+	_lock.release()
+
+# Register the _close_pubcontrols method with atexit to ensure that it is
+# called on exit.
+atexit.register(_close_pubcontrols)
 
 # The PubControl class allows a consumer to manage a set of publishing
 # endpoints and to publish to all of those endpoints via a single publish
@@ -53,6 +70,9 @@ class PubControl(object):
 		self.closed = False
 		if config:
 			self.apply_config(config)
+		_lock.acquire()
+		_pubcontrols.append(self)
+		_lock.release()
 
 	# Remove all of the configured client instances and close all open ZMQ sockets.
 	def remove_all_clients(self):
@@ -61,7 +81,6 @@ class PubControl(object):
 			if 'ZmqPubControlClient' in client.__class__.__name__:
 				client.close()
 		self.clients = list()
-		self._close_zmq_pub_controller()
 
 	# Add the specified PubControlClient or ZmqPubControlClient instance to
 	# the list of clients.
@@ -137,13 +156,16 @@ class PubControl(object):
 	# to returning and allowing the consumer to proceed. Note that the
 	# PubControl instance cannot be used after calling this method.
 	def close(self):
+		self._lock.acquire()
 		self._verify_not_closed()
 		self.wait_all_sent()
 		for client in self.clients:
 			if 'ZmqPubControlClient' in client.__class__.__name__:
 				client.close()
 		self._close_zmq_pub_controller()
+		_pubcontrols.remove(self)
 		self.closed = True
+		self._lock.release()
 
 	# This method is a blocking method that ensures that all asynchronous
 	# publishing is complete for all of the configured client instances prior
@@ -175,17 +197,19 @@ class PubControl(object):
 			self._zmq_pub_controller = ZmqPubController(
 					self._control_sock_uri, self._sub_callback,
 					self._zmq_ctx)
-		self._lock.release()
 		self._control_sock.send('\x00' + uri)
+		self._lock.release()
 
 	# An internal method for sending a ZMQ message for publishing to the
 	# ZmqPubController via the control socket.
 	def _send_to_zmq(self, channel, item):
+		self._lock.acquire()
 		if self._control_sock is not None:
 			channel = _ensure_utf8(channel)
 			content = item.export(True, True)
 			self._control_sock.send('\x02' + channel +
 					'\x00' + tnetstring.dumps(content))
+		self._lock.release()
 
 	# An internal method used as a callback for the ZmqPubController
 	# instance. The purpose of this callback is to aggregate sub and unsub
