@@ -23,6 +23,8 @@ try:
 except ImportError:
 	tnetstring = None
 
+# TODO: Determine if isinstance will work with the unit tests.
+
 # The global list of PubControl instances used to ensure that each instance
 # is properly closed on exit.
 _pubcontrols = list()
@@ -31,7 +33,8 @@ _lock = threading.Lock()
 # An internal method used for closing all existing PubControl instances.
 def _close_pubcontrols():
 	_lock.acquire()
-	for pubcontrol in _pubcontrols:
+	pubcontrols = list(_pubcontrols)
+	for pubcontrol in pubcontrols:
 		pubcontrol.close()
 	_lock.release()
 
@@ -176,7 +179,7 @@ class PubControl(object):
 		self._verify_not_closed()
 		for client in self.clients:
 			if 'ZmqPubControlClient' not in client.__class__.__name__:
-				client.finish()
+				client.wait_all_sent()
 
 	# DEPRECATED: The finish method is now deprecated in favor of the more
 	# descriptive wait_all_sent() method.

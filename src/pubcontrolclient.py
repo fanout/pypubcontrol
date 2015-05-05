@@ -97,16 +97,22 @@ class PubControlClient(object):
 			self.lock.release()
 			self._queue_req(('pub', uri, auth, i, callback))
 
-	# The finish method is a blocking method that ensures that all asynchronous
+	# This method is a blocking method that ensures that all asynchronous
 	# publishing is complete prior to returning and allowing the consumer to 
 	# proceed.
-	def finish(self):
+	def wait_all_sent(self):
 		self.lock.acquire()
 		if self.thread is not None:
 			self._queue_req(('stop',))
 			self.thread.join()
 			self.thread = None
 		self.lock.release()
+
+	# DEPRECATED: The finish method is now deprecated in favor of the more
+	# descriptive wait_all_sent() method.
+	def finish(self):
+		self._verify_not_closed()
+		self.wait_all_sent()
 
 	# An internal method used to generate an authorization header. The
 	# authorization header is generated based on whether basic or JWT
