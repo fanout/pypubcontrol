@@ -9,8 +9,11 @@ import zmq
 import time
 import threading
 
-# The ZmqPubController class facilitates the monitoring of subscriptions via
-# ZMQ PUB sockets.
+# The ZmqPubController class facilitates the publishing of messages and the
+# monitoring of subscriptions via ZMQ PUB sockets. It utilizes control and
+# PUB ZMQ sockets where the control socket provides a command interface
+# to the consumer while the PUB socket is used for message publishing and
+# monitoring subscription information.
 class ZmqPubController(object):
 
 	# Initialize with a control socket URI, ZMQ context to use, and callback
@@ -33,8 +36,7 @@ class ZmqPubController(object):
 
 	# This method is meant to run a separate thread and poll the ZMQ control
 	# socket for control messages and the pub socket for subscribe and
-	# unsubscribe events. When an event is encountered then the callback is
-	# executed with the event information.
+	# unsubscribe events.
 	def _monitor(self):
 		self._poller = zmq.Poller()
 		self._setup_control_socket()
