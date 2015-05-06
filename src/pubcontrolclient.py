@@ -111,7 +111,12 @@ class PubControlClient(object):
 	# DEPRECATED: The finish method is now deprecated in favor of the more
 	# descriptive wait_all_sent() method.
 	def finish(self):
-		self._verify_not_closed()
+		self.wait_all_sent()
+
+	# This method is meant to close the PubControlClient instance and should
+	# implemented when needed for future features. Currently this method
+	# is simply a passthrough to wait_all_sent().
+	def close(self):
 		self.wait_all_sent()
 
 	# An internal method used to generate an authorization header. The

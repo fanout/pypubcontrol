@@ -7,7 +7,7 @@
 
 import threading
 import atexit
-from .utilities import _ensure_utf8
+from .utilities import _ensure_utf8, _verify_zmq
 from .zmqpubcontroller import ZmqPubController
 
 try:
@@ -57,10 +57,7 @@ class ZmqPubControlClient(object):
 	def __init__(self, uri, push_uri=None, pub_uri=None,
 			require_subscribers=False, disable_pub=False, sub_callback=None, 
 			context=None):
-		if zmq is None:
-			raise ValueError('zmq package must be installed')
-		if tnetstring is None:
-			raise ValueError('tnetstring package must be installed')
+		_verify_zmq()
 		self.uri = uri
 		self.pub_uri = pub_uri
 		self.push_uri = push_uri
@@ -127,12 +124,11 @@ class ZmqPubControlClient(object):
 		self._verify_uri_config()
 		self._lock.acquire()
 		if self._push_sock is None and self._pub_controller is None:
-			if (self.pub_uri and not self._disable_pub and
-					(self.push_uri is None or self._require_subscribers)):
+			if not self._disable_pub and self._require_subscribers:
 				self._pub_controller = ZmqPubController(self._sub_callback,
 						self._context)
 				self._pub_controller.connect(self.pub_uri)
-			elif (self.push_uri and not self._require_subscribers):
+			elif not self._require_subscribers:
 				self._push_sock = self._context.socket(zmq.PUSH)
 				self._push_sock.connect(self.push_uri)
 				self._push_sock.linger = 0
@@ -141,11 +137,15 @@ class ZmqPubControlClient(object):
 	# An internal method for ensuring that the ZMQ URIs are properly set
 	# relative to the require_subscribers and disable_pub booleans.
 	def _verify_uri_config(self):
-		if self.pub_uri is None and self.push_uri is None:
-			raise ValueError('either a zmq pub or push uri must be set to publish')
 		if self.pub_uri is None and self._require_subscribers:
-			raise ValueError('pub_uri must be set if _require_subscribers ' +
+			raise ValueError('pub_uri must be set if require_subscribers ' +
 					'is set to true')
+		if self.push_uri is None and not self._require_subscribers:
+			raise ValueError('push_uri must be set if require_subscribers ' +
+					'is set to false')
+		if self._sub_callback and not self._require_subscribers:
+			raise ValueError('sub_callback can only be specified when ' +
+					' require_subscribers is set to true')
 
 	# An internal method for publishing a ZMQ message to either the ZMQ
 	# push socket or ZmqPubController.

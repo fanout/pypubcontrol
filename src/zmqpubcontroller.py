@@ -6,7 +6,12 @@
 #    :license: MIT, see LICENSE for more details.
 
 import threading
-import zmq
+from .utilities import _verify_zmq
+
+try:
+	import zmq
+except ImportError:
+	zmq = None
 
 # The ZmqPubController class facilitates the publishing of messages and the
 # monitoring of subscriptions via ZMQ PUB sockets. It utilizes control and
@@ -19,6 +24,7 @@ class ZmqPubController(object):
 	# accepts two parameters: the first parameter a string containing 'sub'
 	# or 'unsub' and the second parameter containing the subscription name.
 	def __init__(self, callback, zmq_context=None):
+		_verify_zmq()
 		self.subscriptions = set()
 		self._callback = callback
 		self._context = zmq_context

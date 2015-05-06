@@ -10,7 +10,7 @@ import atexit
 from .pcccbhandler import PubControlClientCallbackHandler
 from .pubcontrolclient import PubControlClient
 from .zmqpubcontrolclient import ZmqPubControlClient
-from .utilities import _ensure_utf8
+from .utilities import _ensure_utf8, _verify_zmq
 from .zmqpubcontroller import ZmqPubController
 
 try:
@@ -99,34 +99,36 @@ class PubControl(object):
 		self._verify_not_closed()
 		if not isinstance(config, list):
 			config = [config]
-		for entry in config:
-			if (entry.get('zmq_require_subscribers') is True and
-					'zmq_pub_uri' not in entry):
-				raise ValueError('zmq_pub_uri must be set if require_subscriptions ' +
-						'is set to true')
-		for entry in config:
-			client = None
-			if 'uri' in entry:
-				client = PubControlClient(entry['uri'])
-				if 'iss' in entry:
-					client.set_auth_jwt({'iss': entry['iss']}, entry['key'])
-			if ('zmq_uri' in entry or 'zmq_push_uri' in entry or
-					'zmq_pub_uri' in entry):
-				if zmq is None:
-					raise ValueError('zmq package must be installed')
-				if tnetstring is None:
-					raise ValueError('tnetstring package must be installed')
-				require_subscribers = entry.get('zmq_require_subscribers')
-				if require_subscribers is None:
-					require_subscribers = False
-				client = ZmqPubControlClient(entry.get('zmq_uri'),
-						entry.get('zmq_push_uri'), entry.get('zmq_pub_uri'),
-						require_subscribers, True, None, self._zmq_ctx)
-				if (client.pub_uri and
-						(require_subscribers or 'zmq_push_uri' not in entry)):
-					self._connect_zmq_pub_uri(client.pub_uri)
-			if client:
-				self.clients.append(client)
+		clients = list()
+		pub_uris_connected = list()
+		try:
+			for entry in config:
+				client = None
+				if 'uri' in entry:
+					client = PubControlClient(entry['uri'])
+					if 'iss' in entry:
+						client.set_auth_jwt({'iss': entry['iss']}, entry['key'])
+				if ('zmq_uri' in entry or 'zmq_push_uri' in entry or
+						'zmq_pub_uri' in entry):
+					_verify_zmq()
+					require_subscribers = entry.get('zmq_require_subscribers')
+					if require_subscribers is None:
+						require_subscribers = False
+					client = ZmqPubControlClient(entry.get('zmq_uri'),
+							entry.get('zmq_push_uri'), entry.get('zmq_pub_uri'),
+							require_subscribers, True, None, self._zmq_ctx)
+					if client.pub_uri and require_subscribers:
+						self._connect_zmq_pub_uri(client.pub_uri)
+						pub_uris_connected.append(client.pub_uri)
+				if client:
+					clients.append(client)
+		except:
+			for client in clients:
+				client.close()
+			for uri in pub_uris_connected:
+				self._disconnect_zmq_pub_uri(uri)
+			raise
+		self.clients.extend(clients)
 
 	# The publish method for publishing the specified item to the specified
 	# channel on the configured endpoint. The blocking parameter indicates
@@ -157,10 +159,8 @@ class PubControl(object):
 	def close(self):
 		self._lock.acquire()
 		self._verify_not_closed()
-		self.wait_all_sent()
 		for client in self.clients:
-			if 'ZmqPubControlClient' in client.__class__.__name__:
-				client.close()
+			client.close()
 		if self._zmq_pub_controller:
 			self._zmq_pub_controller.stop()
 			self._zmq_pub_controller._thread.join()
@@ -196,6 +196,13 @@ class PubControl(object):
 					self._zmq_ctx)
 		self._zmq_pub_controller.connect(uri)
 		self._lock.release()
+
+	# An internal method for disconnecting from a ZMQ PUB URI.
+	def _disconnect_zmq_pub_uri(self, uri):
+		if self._zmq_pub_controller:
+			self._lock.acquire()
+			self._zmq_pub_controller.disconnect(uri)
+			self._lock.release()
 
 	# An internal method for sending a ZMQ message for publishing to the
 	# ZmqPubController.
