@@ -46,33 +46,37 @@ class ZmqPubControlClient(object):
 
 	# Initialize this class with a URL representing the REQ socket endpoint.
 	# Optionally provide ZMQ PUB and PUSH URI endpoints and a boolean indicating
-	# if publishes should only occur when subscribers are available. If the
-	# disable_pub boolean is set then initializing with a PUB socket URI or
+	# if publishes should only occur when subscribers are available. If a REQ
+	# endpoint was specified then the PUB and PUSH URIs will automatically be
+	# discovered unless they were already explicitly provided in the constructor.
+	# If the disable_pub boolean is set then initializing with a PUB socket URI or
 	# attempting to publish on a PUB socket will result in an exception (this
 	# is done to facilitate PUB socket publishing from the PubControl class).
 	# Optionally specify a ZMQ context to use otherwise the global ZMQ context
 	# will be used.
-	def __init__(self, uri, zmq_push_uri=None, zmq_pub_uri=None,
+	def __init__(self, uri, push_uri=None, pub_uri=None,
 			require_subscribers=False, disable_pub=False, sub_callback=None, 
-			zmq_context=None):
+			context=None):
 		if zmq is None:
 			raise ValueError('zmq package must be installed')
 		if tnetstring is None:
 			raise ValueError('tnetstring package must be installed')
 		self.uri = uri
-		self.zmq_pub_uri = zmq_pub_uri
-		self.zmq_push_uri = zmq_push_uri
+		self.pub_uri = pub_uri
+		self.push_uri = push_uri
+		if self.uri:
+			self._discover_uris()
 		self.closed = False
-		self._zmq_ctx = zmq_context
-		if self._zmq_ctx is None:
-			self._zmq_ctx = zmq.Context.instance()
+		self._ctx = context
+		if self._ctx is None:
+			self._ctx = zmq.Context.instance()
 		self._require_subscribers = require_subscribers
 		self._disable_pub = disable_pub
 		self._sub_callback = sub_callback
 		self._lock = threading.Lock()
 		self._push_sock = None
-		self._zmq_pub_controller = None
-		if self.zmq_push_uri or self.zmq_pub_uri:
+		self._pub_controller = None
+		if self.push_uri or self.pub_uri:
 			self.connect_zmq()
 		_lock.acquire()
 		_zmqpubcontrolclients.append(self)
@@ -86,7 +90,7 @@ class ZmqPubControlClient(object):
 	def publish(self, channel, item, blocking=False, callback=None):
 		self._verify_not_closed()
 		self.connect_zmq()
-		if self._push_sock is None and self._zmq_pub_controller is None:
+		if self._push_sock is None and self._pub_controller is None:
 			if callback:
 				callback(True, '')
 			return
@@ -102,10 +106,10 @@ class ZmqPubControlClient(object):
 	def close(self):
 		self._lock.acquire()
 		self._verify_not_closed()
-		if self._zmq_pub_controller:
-			self._zmq_pub_controller.stop()
-			self._zmq_pub_controller._thread.join()
-			self._zmq_pub_controller = None
+		if self._pub_controller:
+			self._pub_controller.stop()
+			self._pub_controller._thread.join()
+			self._pub_controller = None
 		if self._push_sock:
 			self._push_sock.close()
 			self._push_sock = None
@@ -122,25 +126,25 @@ class ZmqPubControlClient(object):
 		self._verify_not_closed()
 		self._verify_uri_config()
 		self._lock.acquire()
-		if self._push_sock is None and self._zmq_pub_controller is None:
-			if (self.zmq_pub_uri and not self._disable_pub and
-					(self.zmq_push_uri is None or self._require_subscribers)):
-				self._zmq_pub_controller = ZmqPubController(self._sub_callback,
-						self._zmq_ctx)
-				self._zmq_pub_controller.connect(self.zmq_pub_uri)
-			elif (self.zmq_push_uri and not self._require_subscribers):
-				self._push_sock = self._zmq_ctx.socket(zmq.PUSH)
-				self._push_sock.connect(self.zmq_push_uri)
+		if self._push_sock is None and self._pub_controller is None:
+			if (self.pub_uri and not self._disable_pub and
+					(self.push_uri is None or self._require_subscribers)):
+				self._pub_controller = ZmqPubController(self._sub_callback,
+						self._ctx)
+				self._pub_controller.connect(self.pub_uri)
+			elif (self.push_uri and not self._require_subscribers):
+				self._push_sock = self._ctx.socket(zmq.PUSH)
+				self._push_sock.connect(self.push_uri)
 				self._push_sock.linger = 0
 		self._lock.release()
 
 	# An internal method for ensuring that the ZMQ URIs are properly set
 	# relative to the require_subscribers and disable_pub booleans.
 	def _verify_uri_config(self):
-		if self.zmq_pub_uri is None and self.zmq_push_uri is None:
+		if self.pub_uri is None and self.push_uri is None:
 			raise ValueError('either a zmq pub or push uri must be set to publish')
-		if self.zmq_pub_uri is None and self._require_subscribers:
-			raise ValueError('zmq_pub_uri must be set if _require_subscribers ' +
+		if self.pub_uri is None and self._require_subscribers:
+			raise ValueError('pub_uri must be set if _require_subscribers ' +
 					'is set to true')
 
 	# An internal method for publishing a ZMQ message to either the ZMQ
@@ -151,7 +155,7 @@ class ZmqPubControlClient(object):
 			content['channel'] = channel
 			self._push_sock.send(tnetstring.dumps(content))
 		else:
-			self._zmq_pub_controller.publish(channel,
+			self._pub_controller.publish(channel,
 					tnetstring.dumps(content))
 		self._lock.release()
 
@@ -161,3 +165,39 @@ class ZmqPubControlClient(object):
 	def _verify_not_closed(self):
 		if self.closed:
 			raise ValueError('zmqpubcontrolclient instance is closed')
+
+	# An internal method for discovering the ZMQ PUB and PUSH URIs when a
+	# command URI is availabe. If either a PUB or a PUSH URI was already
+	# specified by the consumer then those will be used.
+	def _discover_uris(self):
+		if self.pub_uri and self.push_uri:
+			return
+		command_uri = self.uri
+		if command_uri.startswith('tcp://'):
+			at = command_uri.find(':', 6)
+			command_host = command_uri[6:at]
+		sock = zmq.Context.instance().socket(zmq.REQ)
+		sock.connect(command_uri)
+		req = {'method': 'get-zmq-uris'}
+		sock.send(tnetstring.dumps(req))
+		resp = tnetstring.loads(sock.recv())
+		if not resp.get('success'):
+			raise ValueError('uri discovery request failed: %s' % resp)
+		v = resp['value']
+		if self.push_uri is None and 'publish-pull' in v:
+			self.push_uri = self._resolve_uri(v['publish-pull'], command_host)
+		if self.pub_uri is None and 'publish-sub' in v:
+			self.pub_uri = self._resolve_uri(v['publish-sub'], command_host)
+
+	# An internal method for resolving a ZMQ URI when the URI contains an
+	# asterisk representing all network interfaces.
+	def _resolve_uri(self, uri, command_host):
+		if uri.startswith('tcp://'):
+			at = uri.find(':', 6)
+			addr = uri[6:at]
+			if addr == '*':
+				if command_host:
+					return uri[0:6] + command_host + uri[at:]
+				else:
+					return uri[0:6] + 'localhost' + uri[at:]
+		return uri
