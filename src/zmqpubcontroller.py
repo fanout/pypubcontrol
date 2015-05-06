@@ -47,7 +47,7 @@ class ZmqPubController(object):
 
 	# A method for sending the specified data to the PUB socket by sending the
 	# 'publish' message via the command control socket.
-	def publish(self, data, channel, content):
+	def publish(self, channel, content):
 		self._command_control_sock.send('\x02' + channel + '\x00' + content)
 
 	# A method for stopping the monitoring done by this instance and closing

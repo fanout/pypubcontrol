@@ -147,7 +147,7 @@ class TestZmqPubController(unittest.TestCase):
 		self.assertEqual(mon._pub_sock.close_called, True)
 		self.assertFalse(mon._thread.isAlive())
 		self.assertEqual(len(mon.subscriptions), 1)
-		self.assertEqual(mon.subscriptions[0], 'chan2')
+		self.assertEqual(next(iter(mon.subscriptions)), 'chan2')
 		self.assertEqual(self.eventCount, 3)
 
 	def sub_callback(self, eventType, item):
@@ -170,8 +170,8 @@ class TestZmqPubController(unittest.TestCase):
 		self.assertEqual(socket.send_data, '\x00uri')
 		mon.disconnect('uri')
 		self.assertEqual(socket.send_data, '\x01uri')
-		mon.publish('data')
-		self.assertEqual(socket.send_data, '\x02data')
+		mon.publish('channel', 'content')
+		self.assertEqual(socket.send_data, '\x02channel\x00content')
 		mon.stop()
 		self.assertEqual(socket.send_data, '\x03')
 
