@@ -5,9 +5,8 @@
 #    :copyright: (c) 2015 by Fanout, Inc.
 #    :license: MIT, see LICENSE for more details.
 
-import zmq
-import time
 import threading
+import zmq
 
 # The ZmqPubController class facilitates the publishing of messages and the
 # monitoring of subscriptions via ZMQ PUB sockets. It utilizes control and
@@ -20,7 +19,7 @@ class ZmqPubController(object):
 	# accepts two parameters: the first parameter a string containing 'sub'
 	# or 'unsub' and the second parameter containing the subscription name.
 	def __init__(self, callback, zmq_context=None):
-		self.subscriptions = list()
+		self.subscriptions = set()
 		self._callback = callback
 		self._context = zmq_context
 		if self._context is None:
@@ -48,8 +47,8 @@ class ZmqPubController(object):
 
 	# A method for sending the specified data to the PUB socket by sending the
 	# 'publish' message via the command control socket.
-	def publish(self, data):
-		self._command_control_sock.send('\x02' + data)
+	def publish(self, data, channel, content):
+		self._command_control_sock.send('\x02' + channel + '\x00' + content)
 
 	# A method for stopping the monitoring done by this instance and closing
 	# all sockets by sending the 'stop' message via the command control socket.
@@ -101,9 +100,8 @@ class ZmqPubController(object):
 			elif mtype == '\x01':
 				self._pub_sock.disconnect(m[1:])
 			elif mtype == '\x02':
-				data = m[1:].split('\x00')
-				if len(data) == 2:
-					self._pub_sock.send_multipart([data[0], data[1]])
+				channel, content = m[1:].split('\x00', 1)
+				self._pub_sock.send_multipart([channel, content])
 			elif mtype == '\x03':
 				self._stop_monitoring = True
 
@@ -121,7 +119,7 @@ class ZmqPubController(object):
 				if item not in self.subscriptions:
 					if self._callback:
 						self._callback('sub', item)
-					self.subscriptions.append(item)
+					self.subscriptions.add(item)
 			elif mtype == '\x00':
 				if item in self.subscriptions:
 					self.subscriptions.remove(item)

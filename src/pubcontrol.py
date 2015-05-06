@@ -204,7 +204,7 @@ class PubControl(object):
 		if self._zmq_pub_controller:
 			channel = _ensure_utf8(channel)
 			content = item.export(True, True)
-			self._zmq_pub_controller.publish(channel + '\x00' +
+			self._zmq_pub_controller.publish(channel,
 					tnetstring.dumps(content))
 		self._lock.release()
 

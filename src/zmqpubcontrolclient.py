@@ -151,8 +151,8 @@ class ZmqPubControlClient(object):
 			content['channel'] = channel
 			self._push_sock.send(tnetstring.dumps(content))
 		else:
-			self._zmq_pub_controller.publish(channel +
-					'\x00' + tnetstring.dumps(content))
+			self._zmq_pub_controller.publish(channel,
+					tnetstring.dumps(content))
 		self._lock.release()
 
 	# An internal method for verifying that the ZmqPubControlClient instance
