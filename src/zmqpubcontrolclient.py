@@ -63,20 +63,16 @@ class ZmqPubControlClient(object):
 		self.zmq_pub_uri = zmq_pub_uri
 		self.zmq_push_uri = zmq_push_uri
 		self.closed = False
+		self._zmq_ctx = zmq_context
+		if self._zmq_ctx is None:
+			self._zmq_ctx = zmq.Context.instance()
 		self._require_subscribers = require_subscribers
 		self._disable_pub = disable_pub
 		self._sub_callback = sub_callback
 		self._lock = threading.Lock()
 		self._push_sock = None
-		self._control_sock = None
-		self._control_sock_uri = ('inproc://zmqpubcontrolclient-xpub-' + 
-				str(id(self)))
 		self._zmq_pub_controller = None
-		if zmq_context:
-			self._zmq_ctx = zmq_context
-		else:
-			self._zmq_ctx = zmq.Context.instance()
-		if self.zmq_push_uri is not None or self.zmq_pub_uri is not None:
+		if self.zmq_push_uri or self.zmq_pub_uri:
 			self.connect_zmq()
 		_lock.acquire()
 		_zmqpubcontrolclients.append(self)
@@ -90,7 +86,7 @@ class ZmqPubControlClient(object):
 	def publish(self, channel, item, blocking=False, callback=None):
 		self._verify_not_closed()
 		self.connect_zmq()
-		if self._push_sock is None and self._control_sock is None:
+		if self._push_sock is None and self._zmq_pub_controller is None:
 			if callback:
 				callback(True, '')
 			return
@@ -106,13 +102,11 @@ class ZmqPubControlClient(object):
 	def close(self):
 		self._lock.acquire()
 		self._verify_not_closed()
-		if self._control_sock is not None:
-			self._control_sock.send('\x03')
+		if self._zmq_pub_controller:
+			self._zmq_pub_controller.stop()
 			self._zmq_pub_controller._thread.join()
 			self._zmq_pub_controller = None
-			self._control_sock.close()
-			self._control_sock = None
-		if self._push_sock is not None:
+		if self._push_sock:
 			self._push_sock.close()
 			self._push_sock = None
 		_zmqpubcontrolclients.remove(self)
@@ -128,17 +122,13 @@ class ZmqPubControlClient(object):
 		self._verify_not_closed()
 		self._verify_uri_config()
 		self._lock.acquire()
-		if self._push_sock is None and self._control_sock is None:
-			if (self.zmq_pub_uri is not None and not self._disable_pub and
+		if self._push_sock is None and self._zmq_pub_controller is None:
+			if (self.zmq_pub_uri and not self._disable_pub and
 					(self.zmq_push_uri is None or self._require_subscribers)):
-				self._control_sock = self._zmq_ctx.socket(zmq.PAIR)
-				self._control_sock.linger = 0
-				self._control_sock.bind(self._control_sock_uri)
-				self._zmq_pub_controller = ZmqPubController(
-						self._control_sock_uri, self._sub_callback,
+				self._zmq_pub_controller = ZmqPubController(self._sub_callback,
 						self._zmq_ctx)
-				self._control_sock.send('\x00' + self.zmq_pub_uri)
-			elif (self.zmq_push_uri is not None and not self._require_subscribers):
+				self._zmq_pub_controller.connect(self.zmq_pub_uri)
+			elif (self.zmq_push_uri and not self._require_subscribers):
 				self._push_sock = self._zmq_ctx.socket(zmq.PUSH)
 				self._push_sock.connect(self.zmq_push_uri)
 				self._push_sock.linger = 0
@@ -154,14 +144,14 @@ class ZmqPubControlClient(object):
 					'is set to true')
 
 	# An internal method for publishing a ZMQ message to either the ZMQ
-	# push or control socket.
+	# push socket or ZmqPubController.
 	def _send_to_zmq(self, content, channel):
 		self._lock.acquire()
 		if self._push_sock:
 			content['channel'] = channel
 			self._push_sock.send(tnetstring.dumps(content))
 		else:
-			self._control_sock.send('\x02' + channel +
+			self._zmq_pub_controller.publish(channel +
 					'\x00' + tnetstring.dumps(content))
 		self._lock.release()
 

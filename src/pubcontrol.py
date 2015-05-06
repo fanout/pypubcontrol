@@ -62,12 +62,8 @@ class PubControl(object):
 		self._lock = threading.Lock()
 		self._sub_callback = sub_callback
 		self._zmq_pub_controller = None
-		self._control_sock = None
-		self._control_sock_uri = 'inproc://pubcontrol-xpub-' + str(id(self))
-		self._zmq_ctx = None
-		if zmq_context:
-			self._zmq_ctx = zmq_context
-		elif zmq:
+		self._zmq_ctx = zmq_context
+		if self._zmq_ctx is None:
 			self._zmq_ctx = zmq.Context.instance()
 		self.clients = list()
 		self.closed = False
@@ -146,7 +142,7 @@ class PubControl(object):
 			for client in self.clients:
 				client.publish(channel, item, blocking=True)
 		else:
-			if callback is not None:
+			if callback:
 				cb = PubControlClientCallbackHandler(len(self.clients),
 						callback).handler
 			else:
@@ -165,7 +161,10 @@ class PubControl(object):
 		for client in self.clients:
 			if 'ZmqPubControlClient' in client.__class__.__name__:
 				client.close()
-		self._close_zmq_pub_controller()
+		if self._zmq_pub_controller:
+			self._zmq_pub_controller.stop()
+			self._zmq_pub_controller._thread.join()
+			self._zmq_pub_controller = None
 		_pubcontrols.remove(self)
 		self.closed = True
 		self._lock.release()
@@ -188,30 +187,25 @@ class PubControl(object):
 		self.wait_all_sent()
 
 	# An internal method for connecting to a ZMQ PUB URI. If necessary a
-	# ZmqPubController instance will be created along with a corresponding
-	# control socket. The ZmqPubController is responsible for maintaining
-	# and publishing to the PUB socket.
+	# ZmqPubController instance will be created. The ZmqPubController is
+	# responsible for maintaining and publishing to the PUB socket.
 	def _connect_zmq_pub_uri(self, uri):
 		self._lock.acquire()
 		if self._zmq_pub_controller is None:
-			self._control_sock = self._zmq_ctx.socket(zmq.PAIR)
-			self._control_sock.linger = 0
-			self._control_sock.bind(self._control_sock_uri)
-			self._zmq_pub_controller = ZmqPubController(
-					self._control_sock_uri, self._sub_callback,
+			self._zmq_pub_controller = ZmqPubController(self._sub_callback,
 					self._zmq_ctx)
-		self._control_sock.send('\x00' + uri)
+		self._zmq_pub_controller.connect(uri)
 		self._lock.release()
 
 	# An internal method for sending a ZMQ message for publishing to the
-	# ZmqPubController via the control socket.
+	# ZmqPubController.
 	def _send_to_zmq(self, channel, item):
 		self._lock.acquire()
-		if self._control_sock is not None:
+		if self._zmq_pub_controller:
 			channel = _ensure_utf8(channel)
 			content = item.export(True, True)
-			self._control_sock.send('\x02' + channel +
-					'\x00' + tnetstring.dumps(content))
+			self._zmq_pub_controller.publish(channel + '\x00' +
+					tnetstring.dumps(content))
 		self._lock.release()
 
 	# An internal method used as a callback for the ZmqPubController
@@ -227,7 +221,7 @@ class PubControl(object):
 	def _pub_controller_callback(self, eventType, chan):
 		executeCallback = True
 		for client in self.clients:
-			if client._zmq_pub_controller is not None:
+			if client._zmq_pub_controller:
 				if chan in client._sub_monitor.subscriptions:
 					executeCallback = False
 					break
@@ -241,13 +235,3 @@ class PubControl(object):
 	def _verify_not_closed(self):
 		if self.closed:
 			raise ValueError('pubcontrol instance is closed')
-
-	# An internal method for closing the ZmqPubController instance by
-	# sending a 'close' control message and joining its monitor thread.
-	def _close_zmq_pub_controller(self):
-		if self._zmq_pub_controller:
-			self._control_sock.send('\x03')
-			self._zmq_pub_controller._thread.join()
-			self._zmq_pub_controller = None
-			self._control_sock.close()
-			self._control_sock = None
