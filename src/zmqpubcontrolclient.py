@@ -64,12 +64,12 @@ class ZmqPubControlClient(object):
 		self.uri = uri
 		self.pub_uri = pub_uri
 		self.push_uri = push_uri
+		self._context = context
+		if self._context is None:
+			self._context = zmq.Context.instance()
 		if self.uri:
 			self._discover_uris()
 		self.closed = False
-		self._ctx = context
-		if self._ctx is None:
-			self._ctx = zmq.Context.instance()
 		self._require_subscribers = require_subscribers
 		self._disable_pub = disable_pub
 		self._sub_callback = sub_callback
@@ -130,10 +130,10 @@ class ZmqPubControlClient(object):
 			if (self.pub_uri and not self._disable_pub and
 					(self.push_uri is None or self._require_subscribers)):
 				self._pub_controller = ZmqPubController(self._sub_callback,
-						self._ctx)
+						self._context)
 				self._pub_controller.connect(self.pub_uri)
 			elif (self.push_uri and not self._require_subscribers):
-				self._push_sock = self._ctx.socket(zmq.PUSH)
+				self._push_sock = self._context.socket(zmq.PUSH)
 				self._push_sock.connect(self.push_uri)
 				self._push_sock.linger = 0
 		self._lock.release()
@@ -176,7 +176,7 @@ class ZmqPubControlClient(object):
 		if command_uri.startswith('tcp://'):
 			at = command_uri.find(':', 6)
 			command_host = command_uri[6:at]
-		sock = zmq.Context.instance().socket(zmq.REQ)
+		sock = self._context.socket(zmq.REQ)
 		sock.connect(command_uri)
 		req = {'method': 'get-zmq-uris'}
 		sock.send(tnetstring.dumps(req))

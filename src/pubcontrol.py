@@ -122,9 +122,9 @@ class PubControl(object):
 				client = ZmqPubControlClient(entry.get('zmq_uri'),
 						entry.get('zmq_push_uri'), entry.get('zmq_pub_uri'),
 						require_subscribers, True, None, self._zmq_ctx)
-				if ('zmq_pub_uri' in entry and
+				if (client.pub_uri and
 						(require_subscribers or 'zmq_push_uri' not in entry)):
-					self._connect_zmq_pub_uri(entry['zmq_pub_uri'])
+					self._connect_zmq_pub_uri(client.pub_uri)
 			if client:
 				self.clients.append(client)
 
