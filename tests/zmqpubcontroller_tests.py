@@ -29,6 +29,10 @@ class ZmqTestClass(object):
 	def Poller(self):
 		return ZmqPollerTestClass()
 
+class CommandControlSocketTestClass(object):
+	def send(self, data):
+		self.send_data = data
+
 class PubSocketTestClass(object):
 	def __init__(self):
 		self.count = 0
@@ -63,6 +67,9 @@ class ControlSocketTestClass(object):
 		self.count = 0
 		self.closed = False
 
+	def bind(self, uri):
+		self.bind_uri = uri
+
 	def connect(self, uri):
 		self.connect_uri = uri
 
@@ -96,31 +103,43 @@ class TestZmqPubController(unittest.TestCase):
 		self.eventCount = 0
 
 	def test_initialize(self):
-		mon = ZmqPubControllerTestClass('uri', 'callback', 'context')
+		mon = ZmqPubControllerTestClass('callback')
+		self.assertEqual(mon._context, zmq.Context.instance())
+		zmqpubcontroller.zmq = ZmqTestClass()
+		ctx = ZmqContextTestClass()
+		mon = ZmqPubControllerTestClass('callback', ctx)
 		self.assertEqual(len(mon.subscriptions), 0)
-		self.assertEqual(mon._control_sock_uri, 'uri')
+		self.assertEqual(mon._control_uri,
+				'inproc://zmqpubcontroller-xpub-' + str(id(mon)))
 		self.assertEqual(mon._callback, 'callback')
-		self.assertEqual(mon._context, 'context')
+		self.assertEqual(mon._context, ctx)
 		self.assertEqual(mon._stop_monitoring, False)
 		self.assertEqual(mon._pub_sock, None)
-		self.assertEqual(mon._control_sock, None)
+		self.assertEqual(mon._monitor_control_sock, None)
+		self.assertEqual(mon._command_control_sock.bind_uri,
+				'inproc://zmqpubcontroller-xpub-' + str(id(mon)))
+		self.assertEqual(mon._command_control_sock.linger, 0)
 		self.assertEqual(mon._thread.daemon, True)
 		time.sleep(1)
 		self.assertTrue(mon.monitor_started)
 
 	def test_monitor(self):	
 		zmqpubcontroller.zmq = ZmqTestClass()
-		mon = zmqpubcontroller.ZmqPubController('uri',
+		mon = zmqpubcontroller.ZmqPubController(
 				self.sub_callback, ZmqContextTestClass())
 		self.assertTrue(mon._thread.daemon)
 		time.sleep(2)
-		self.assertEqual(mon._poller.register_data[0][0], mon._control_sock)
+		self.assertEqual(mon._poller.register_data[0][0],
+				mon._monitor_control_sock)
 		self.assertEqual(mon._poller.register_data[0][1], 'pollin')
 		self.assertEqual(mon._poller.register_data[1][0], mon._pub_sock)
 		self.assertEqual(mon._poller.register_data[1][1], 'pollin')
-		self.assertEqual(mon._control_sock.connect_uri, 'uri')
-		self.assertEqual(mon._control_sock.linger, 0)
-		self.assertEqual(mon._control_sock.close_called, True)
+		self.assertEqual(mon._command_control_sock.bind_uri,
+				'inproc://zmqpubcontroller-xpub-' + str(id(mon)))
+		self.assertEqual(mon._monitor_control_sock.connect_uri,
+				'inproc://zmqpubcontroller-xpub-' + str(id(mon)))
+		self.assertEqual(mon._monitor_control_sock.linger, 0)
+		self.assertEqual(mon._monitor_control_sock.close_called, True)
 		self.assertEqual(mon._pub_sock.linger, 0)
 		self.assertEqual(mon._pub_sock.connect_uri, 'uri2')
 		self.assertEqual(mon._pub_sock.disconnect_uri, 'uri3')
@@ -142,6 +161,19 @@ class TestZmqPubController(unittest.TestCase):
 		if self.eventCount == 3:
 			self.assertEqual(eventType, 'unsub')
 			self.assertEqual(item, 'chan')
+
+	def test_commands(self):
+		mon = zmqpubcontroller.ZmqPubController(self.sub_callback)
+		socket = CommandControlSocketTestClass()
+		mon._command_control_sock = socket
+		mon.connect('uri')
+		self.assertEqual(socket.send_data, '\x00uri')
+		mon.disconnect('uri')
+		self.assertEqual(socket.send_data, '\x01uri')
+		mon.publish('data')
+		self.assertEqual(socket.send_data, '\x02data')
+		mon.stop()
+		self.assertEqual(socket.send_data, '\x03')
 
 if __name__ == '__main__':
 		unittest.main()
