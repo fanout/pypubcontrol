@@ -23,7 +23,10 @@ try:
 except ImportError:
 	tnetstring = None
 
+
 # TODO: Determine if isinstance will work with the unit tests.
+# TODO: Verify with Python 3.
+
 
 # The global list of PubControl instances used to ensure that each instance
 # is properly closed on exit.
