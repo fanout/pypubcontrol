@@ -158,6 +158,30 @@ class TestPubControlClient(unittest.TestCase):
 		pcc = PubControlClient('uri')
 		self.assertEqual(pcc._gen_auth_header(), None)
 
+	def test_wait_all_sent(self):
+		pcc = PubControlClient('uri')
+		self.thread_for_testing_finish_completed = False
+		pcc.thread_cond = threading.Condition()
+		pcc.thread = threading.Thread(target = self.thread_for_testing_finish)
+		pcc.thread.daemon = True
+		pcc.thread.start()
+		pcc.wait_all_sent()
+		self.assertTrue(self.thread_for_testing_finish_completed)
+		self.assertEqual(pcc.thread, None)
+		self.assertEqual(pcc.req_queue.popleft(), ('stop',))
+
+	def test_close(self):
+		pcc = PubControlClient('uri')
+		self.thread_for_testing_finish_completed = False
+		pcc.thread_cond = threading.Condition()
+		pcc.thread = threading.Thread(target = self.thread_for_testing_finish)
+		pcc.thread.daemon = True
+		pcc.thread.start()
+		pcc.close()
+		self.assertTrue(self.thread_for_testing_finish_completed)
+		self.assertEqual(pcc.thread, None)
+		self.assertEqual(pcc.req_queue.popleft(), ('stop',))
+
 	def test_finish(self):
 		pcc = PubControlClient('uri')
 		self.thread_for_testing_finish_completed = False
