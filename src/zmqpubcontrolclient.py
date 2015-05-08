@@ -62,10 +62,9 @@ class ZmqPubControlClient(object):
 		self.pub_uri = pub_uri
 		self.push_uri = push_uri
 		self._context = context
+		self._discovery_completed = False;
 		if self._context is None:
 			self._context = zmq.Context.instance()
-		if self.uri:
-			self._discover_uris()
 		self.closed = False
 		self._require_subscribers = require_subscribers
 		self._disable_pub = disable_pub
@@ -73,6 +72,7 @@ class ZmqPubControlClient(object):
 		self._lock = threading.Lock()
 		self._push_sock = None
 		self._pub_controller = None
+		self._discover_uris()
 		if self.push_uri or self.pub_uri:
 			self.connect_zmq()
 		_lock.acquire()
@@ -86,6 +86,7 @@ class ZmqPubControlClient(object):
 	# a result that is set to true.
 	def publish(self, channel, item, blocking=False, callback=None):
 		self._verify_not_closed()
+		self._discover_uris()
 		self.connect_zmq()
 		if self._push_sock is None and self._pub_controller is None:
 			if callback:
@@ -171,7 +172,8 @@ class ZmqPubControlClient(object):
 	# command URI is availabe. If either a PUB or a PUSH URI was already
 	# specified by the consumer then those will be used.
 	def _discover_uris(self):
-		if self.pub_uri and self.push_uri:
+		if (self.uri is None or self._discovery_completed or
+				(self.pub_uri and self.push_uri)):
 			return
 		command_uri = self.uri
 		command_host = None
@@ -191,6 +193,7 @@ class ZmqPubControlClient(object):
 			self.push_uri = self._resolve_uri(v['publish-pull'], command_host)
 		if self.pub_uri is None and 'publish-sub' in v:
 			self.pub_uri = self._resolve_uri(v['publish-sub'], command_host)
+		self._discovery_completed = True
 		sock.close()
 
 	# An internal method for resolving a ZMQ URI when the URI contains an
