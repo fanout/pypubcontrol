@@ -174,6 +174,7 @@ class ZmqPubControlClient(object):
 		if self.pub_uri and self.push_uri:
 			return
 		command_uri = self.uri
+		command_host = None
 		if command_uri.startswith('tcp://'):
 			at = command_uri.find(':', 6)
 			command_host = command_uri[6:at]
@@ -183,12 +184,14 @@ class ZmqPubControlClient(object):
 		sock.send(tnetstring.dumps(req))
 		resp = tnetstring.loads(sock.recv())
 		if not resp.get('success'):
+			sock.close()
 			raise ValueError('uri discovery request failed: %s' % resp)
 		v = resp['value']
 		if self.push_uri is None and 'publish-pull' in v:
 			self.push_uri = self._resolve_uri(v['publish-pull'], command_host)
 		if self.pub_uri is None and 'publish-sub' in v:
 			self.pub_uri = self._resolve_uri(v['publish-sub'], command_host)
+		sock.close()
 
 	# An internal method for resolving a ZMQ URI when the URI contains an
 	# asterisk representing all network interfaces.
