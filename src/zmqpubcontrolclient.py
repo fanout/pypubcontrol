@@ -109,6 +109,7 @@ class ZmqPubControlClient(object):
 			self._pub_controller = None
 		if self._push_sock:
 			self._push_sock.close()
+
 			self._push_sock = None
 		_zmqpubcontrolclients.remove(self)
 		self.closed = True

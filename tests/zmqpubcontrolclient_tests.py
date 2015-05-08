@@ -31,6 +31,9 @@ class ZmqSocketTestClass():
 	def connect(self, uri):
 		self.uri = uri
 
+	def bind(self, uri):
+		self.uri = uri
+
 class ZmqPubControlClientTestClass(zmqpcc.ZmqPubControlClient):
 	def _verify_not_closed(self):
 		self.verify_not_closed_called = True
@@ -49,10 +52,31 @@ class ZmqPubControlClientTestClass2(zmqpcc.ZmqPubControlClient):
 	def _verify_uri_config(self):
 		self.verify_uri_config_called = True
 
+	def _discover_uris(self):
+		self.discover_called = True
+
+	def close(self):
+		self.closed = True
+
 class ZmqContextTestClass():
 	def socket(self, socket_type):
 		self.socket_type = socket_type
 		return ZmqSocketTestClass()
+
+class ThreadTestClass():
+	def join(self):
+		self.join_called = True
+
+class ZmqPubControllerTestClass():
+	def __init__(self, callback=None, context=None):
+		self.callback = callback
+		self.context = context
+
+	def connect(self, uri):
+		self.connect_uri = uri
+
+	def stop(self):
+		self.stop_called = True
 
 class TestZmqPubControlClient(unittest.TestCase):
 	def setUp(self):
@@ -138,55 +162,52 @@ class TestZmqPubControlClient(unittest.TestCase):
 				Item(TestFormatSubClass()).export(True, True))
 		self.assertEquals(self.callback_result, True)
 		self.assertEquals(self.callback_message, '')
-"""
+
 	def test_close(self):
-		client = zmqpcc.ZmqPubControlClient('uri')
+		client = ZmqPubControlClientTestClass('uri')
+		self.assertTrue(client in zmqpcc._zmqpubcontrolclients)
 		client.close()
+		self.assertFalse(client in zmqpcc._zmqpubcontrolclients)
+		self.assertTrue(client.verify_not_closed_called)
+		client = ZmqPubControlClientTestClass('uri')
 		sock = ZmqSocketTestClass()
-		client._sock = sock
+		client._push_sock = sock
+		pubcontroller = ZmqPubControllerTestClass()
+		pubcontroller._thread = ThreadTestClass()
+		client._pub_controller = pubcontroller		
 		client.close()
-		self.assertEquals(client._sock, None)
+		self.assertEquals(client._push_sock, None)
 		self.assertTrue(sock.closed)
+		self.assertTrue(pubcontroller.stop_called)
+		self.assertTrue(pubcontroller._thread.join_called)
 
 	def test_connect_zmq(self):
 		client = ZmqPubControlClientTestClass2('uri')
-		client.connect_zmq()
-		self.assertTrue(client.verify_uri_config_called)
-		client = ZmqPubControlClientTestClass2('uri')
-		client.pub_uri = 'pub_uri'
+		client._require_subscribers = True
 		client._disable_pub = True
 		client.connect_zmq()
-		self.assertTrue(client.verify_uri_config_called)
+		self.assertEquals(client._push_sock, None)
+		self.assertEquals(client._pub_controller, None)
 		client = ZmqPubControlClientTestClass2('uri')
 		client._context = ZmqContextTestClass()
+		client._require_subscribers = False
 		client.push_uri = 'push_uri'
 		client.connect_zmq()
-		self.assertTrue(client.verify_uri_config_called)
 		self.assertEquals(client._context.socket_type, zmq.PUSH)
-		self.assertEquals(client._sock.linger, 0)
-		self.assertEquals(client._sock.uri, 'push_uri')
+		self.assertEquals(client._push_sock.linger, 0)
+		self.assertEquals(client._push_sock.uri, 'push_uri')
 		client = ZmqPubControlClientTestClass2('uri')
 		client._context = ZmqContextTestClass()
-		client.pub_uri = 'pub_uri'
-		client.connect_zmq()
-		self.assertTrue(client.verify_uri_config_called)
-		self.assertEquals(client._context.socket_type, zmq.XPUB)
-		self.assertEquals(client._sock.linger, 0)
-		self.assertEquals(client._sock.uri, 'pub_uri')
-		self.assertEquals(client._sub_monitor, None)
-		client = ZmqPubControlClientTestClass2('uri')
-		client._context = ZmqContextTestClass()
+		client._require_subscribers = True
 		client._sub_callback = 'callback'
 		client.pub_uri = 'pub_uri'
+		zmqpcc.ZmqPubController = ZmqPubControllerTestClass
 		client.connect_zmq()
-		self.assertTrue(client.verify_uri_config_called)
-		self.assertEquals(client._context.socket_type, zmq.XPUB)
-		self.assertEquals(client._sock.linger, 0)
-		self.assertEquals(client._sock.uri, 'pub_uri')
-		self.assertNotEqual(client._sub_monitor, None)
-		self.assertEquals(client._sub_monitor._lock, client._lock)
-		self.assertEquals(client._sub_monitor._socket, client._sock)
-		self.assertEquals(client._sub_monitor._callback, client._sub_callback)
+		self.assertEquals(client._pub_controller.callback, 'callback')
+		self.assertEquals(client._pub_controller.context, client._context)
+		self.assertEquals(client._pub_controller.connect_uri, 'pub_uri')
+
+"""
 
 	def test_verify_uri_config(self):
 		client = zmqpcc.ZmqPubControlClient('uri')
