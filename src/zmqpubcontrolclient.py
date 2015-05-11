@@ -73,7 +73,10 @@ class ZmqPubControlClient(object):
 		self._lock = threading.Lock()
 		self._push_sock = None
 		self._pub_controller = None
-		self._discover_uris()
+		try:
+			self._discover_uris()
+		except ValueError:
+			pass
 		if self.push_uri or self.pub_uri:
 			self.connect_zmq()
 		_lock.acquire()
@@ -176,34 +179,46 @@ class ZmqPubControlClient(object):
 		if (self.uri is None or self._discovery_completed or
 				(self.pub_uri and self.push_uri)):
 			return
-		command_uri = self.uri
-		command_host = None
-		if command_uri.startswith('tcp://'):
-			at = command_uri.find(':', 6)
-			command_host = command_uri[6:at]
 		sock = self._context.socket(zmq.REQ)
-		sock.connect(command_uri)
+		sock.connect(self.uri)
 		start = int(time.clock() * 1000)
 		if not sock.poll(3000, zmq.POLLOUT):
+			sock.close()
 			raise ValueError('uri discovery request failed: pollout timeout')
 		req = {'method': 'get-zmq-uris'}
 		sock.send(tnetstring.dumps(req))
 		elapsed = max(int(time.clock() * 1000) - start, 0)
 		if not sock.poll(max(3000 - elapsed, 0), zmq.POLLIN):
+			sock.close()
 			raise ValueError('uri discovery request failed: pollin timeout')
 		resp = tnetstring.loads(sock.recv())
+		sock.close()
 		if not resp.get('success'):
-			sock.close()
 			raise ValueError('uri discovery request failed: %s' % resp)
-		v = resp['value']
-		if self.push_uri is None and 'publish-pull' in v:
-			self.push_uri = self._resolve_uri(v['publish-pull'], command_host)
-		if self.pub_uri is None and 'publish-sub' in v:
-			self.pub_uri = self._resolve_uri(v['publish-sub'], command_host)
+		self._set_discovered_uris(resp['value'])		
+		self._discovery_completed = True
+
+	# An internal method for setting the URIs discovered via the command URI.
+	# If the push and pub URIs were not explicitly set and neither was
+	# discovered then an error will be raised.
+	def _set_discovered_uris(self, discovery_result):
+		command_host = self._get_command_host(self.uri)
+		if self.push_uri is None and 'publish-pull' in discovery_result:
+			self.push_uri = self._resolve_uri(
+					discovery_result['publish-pull'], command_host)
+		if self.pub_uri is None and 'publish-sub' in discovery_result:
+			self.pub_uri = self._resolve_uri(
+					discovery_result['publish-sub'], command_host)
 		if self.push_uri is None and self.pub_uri is None:
 			raise ValueError('uri discovery request failed: no uris discovered')
-		self._discovery_completed = True
-		sock.close()
+
+	# An internal method for getting the host from the specified URI.
+	def _get_command_host(self, command_uri):
+		command_host = None
+		if command_uri.startswith('tcp://'):
+			at = command_uri.find(':', 6)
+			command_host = command_uri[6:at]
+		return command_host
 
 	# An internal method for resolving a ZMQ URI when the URI contains an
 	# asterisk representing all network interfaces.
