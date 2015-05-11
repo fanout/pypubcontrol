@@ -7,6 +7,7 @@
 
 import threading
 import atexit
+import time
 from .utilities import _ensure_utf8, _verify_zmq
 from .zmqpubcontroller import ZmqPubController
 
@@ -182,8 +183,14 @@ class ZmqPubControlClient(object):
 			command_host = command_uri[6:at]
 		sock = self._context.socket(zmq.REQ)
 		sock.connect(command_uri)
+		start = int(time.clock() * 1000)
+		if not sock.poll(3000, zmq.POLLOUT):
+			raise ValueError('uri discovery request failed: pollout timeout')
 		req = {'method': 'get-zmq-uris'}
 		sock.send(tnetstring.dumps(req))
+		elapsed = max(int(time.clock() * 1000) - start, 0)
+		if not sock.poll(max(3000 - elapsed, 0), zmq.POLLIN):
+			raise ValueError('uri discovery request failed: pollin timeout')
 		resp = tnetstring.loads(sock.recv())
 		if not resp.get('success'):
 			sock.close()
@@ -193,6 +200,8 @@ class ZmqPubControlClient(object):
 			self.push_uri = self._resolve_uri(v['publish-pull'], command_host)
 		if self.pub_uri is None and 'publish-sub' in v:
 			self.pub_uri = self._resolve_uri(v['publish-sub'], command_host)
+		if self.push_uri is None and self.pub_uri is None:
+			raise ValueError('uri discovery request failed: no uris discovered')
 		self._discovery_completed = True
 		sock.close()
 

@@ -16,8 +16,10 @@ class TestFormatSubClass(Format):
 		return {'body': 'bodyvalue'}
 
 class ZmqSocketTestClass():
-	def __init__(self):
+	def __init__(self, poll_response=None):
 		self.closed = True
+		self.poll_params = list()
+		self.poll_response = 1
 
 	def close(self):
 		self.closed = True
@@ -34,6 +36,10 @@ class ZmqSocketTestClass():
 	def bind(self, uri):
 		self.bind_uri = uri
 
+	def poll(self, poll_timeout, poll_type):
+		self.poll_params.append((poll_timeout, poll_type))
+		return self.poll_response
+
 	def recv(self):
 		return tnetstring.dumps({'success': True,
 				'value': {'publish-pull': 'publish-pull',
@@ -48,6 +54,9 @@ class ZmqSocketTestClass2():
 
 	def connect(self, uri):
 		self.connect_uri = uri
+
+	def poll(self, poll_timeout, poll_type):
+		return 1
 
 	def recv(self):
 		return tnetstring.dumps({'success': False})
@@ -96,6 +105,7 @@ class ZmqPubControlClientTestClass4(zmqpcc.ZmqPubControlClient):
 			self.resolve_hosts = list()
 			self.resolve_uris.append(uri)
 			self.resolve_hosts.append(host)
+		return uri
 
 	def close(self):
 		self.closed = True
@@ -338,16 +348,25 @@ class TestZmqPubControlClient(unittest.TestCase):
 		client.pub_uri = None
 		client.push_uri = None
 		client._context = ZmqContextTestClass()
+		print 'here'
 		client._discover_uris()
 		self.assertTrue(client._discovery_completed)
 		self.assertEquals(client._context.socket_type, zmq.REQ)
 		self.assertEquals(client._context.last_socket_created.
 				connect_uri, 'tcp://localhost:5563')
+		self.assertEquals(client._context.last_socket_created.
+				poll_params[0][0], 3000)
+		self.assertEquals(client._context.last_socket_created.
+				poll_params[0][1], zmq.POLLOUT)
+		self.assertEquals(client._context.last_socket_created.
+				poll_params[1][1], zmq.POLLIN)
 		self.assertTrue(client._context.last_socket_created.closed)
 		self.assertEquals(client.resolve_uris[0], 'publish-pull')
 		self.assertEquals(client.resolve_uris[1], 'publish-sub')
 		self.assertEquals(client.resolve_hosts[0], 'localhost')
 		self.assertEquals(client.resolve_hosts[1], 'localhost')
+		self.assertEquals(client.push_uri, 'publish-pull')
+		self.assertEquals(client.pub_uri, 'publish-sub')
 		client = ZmqPubControlClientTestClass4('uri',
 				'push_uri', 'pub_uri')
 		client.pub_uri = None
