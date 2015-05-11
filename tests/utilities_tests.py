@@ -39,6 +39,5 @@ class TestUtilities(unittest.TestCase):
 		with self.assertRaises(ValueError):
 				utilities._verify_zmq()
 
-
 if __name__ == '__main__':
 		unittest.main()

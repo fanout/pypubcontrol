@@ -18,6 +18,13 @@ class TestFormatSubClass(Format):
 
 pollin_response = 1
 pollout_response = 1
+successful_discovery_result = {'success'.encode('utf-8'): True,
+		'value'.encode('utf-8'): {'publish-pull'.encode('utf-8'):
+		'publish-pull'.encode('utf-8'),
+		'publish-sub'.encode('utf-8'): 'publish-sub'.encode('utf-8')}}
+failed_discovery_result1 = {'success'.encode('utf-8'): False}
+failed_discovery_result2 = {'success'.encode('utf-8'): True}
+discovery_result = successful_discovery_result
 
 class ZmqSocketTestClass():
 	def __init__(self, ):
@@ -48,25 +55,7 @@ class ZmqSocketTestClass():
 			return pollout_response
 
 	def recv(self):
-		return tnetstring.dumps({'success': True,
-				'value': {'publish-pull': 'publish-pull',
-				'publish-sub': 'publish-sub'}})
-
-class ZmqSocketTestClass2():
-	def close(self):
-		self.closed = True
-
-	def send(self, data):
-		self.send_data = data
-
-	def connect(self, uri):
-		self.connect_uri = uri
-
-	def poll(self, poll_timeout, poll_type):
-		return 1
-
-	def recv(self):
-		return tnetstring.dumps({'success': False})
+		return tnetstring.dumps(discovery_result)
 
 class ZmqPubControlClientTestClass(zmqpcc.ZmqPubControlClient):
 	def _verify_not_closed(self):
@@ -135,12 +124,6 @@ class ZmqContextTestClass():
 	def socket(self, socket_type):
 		self.socket_type = socket_type
 		self.last_socket_created = ZmqSocketTestClass()
-		return self.last_socket_created
-
-class ZmqContextTestClass2():
-	def socket(self, socket_type):
-		self.socket_type = socket_type
-		self.last_socket_created = ZmqSocketTestClass2()
 		return self.last_socket_created
 
 class ThreadTestClass():
@@ -329,15 +312,20 @@ class TestZmqPubControlClient(unittest.TestCase):
 	def test_send_to_zmq(self):
 		client = ZmqPubControlClientTestClass2('uri')
 		client._push_sock = ZmqSocketTestClass()
-		client._send_to_zmq({'content': 'content'}, 'chan')
+		client._send_to_zmq({'content'.encode('utf-8'):
+				'content'.encode('utf-8')}, 'chan'.encode('utf-8'))
 		self.assertEquals(client._push_sock.send_data, tnetstring.dumps(
-				{'content': 'content', 'channel': 'chan'}))
+				{'content'.encode('utf-8'): 'content'.encode('utf-8'),
+				'channel'.encode('utf-8'): 'chan'.encode('utf-8')}))
 		client = ZmqPubControlClientTestClass2('uri')
 		client._pub_controller = ZmqPubControllerTestClass()
-		client._send_to_zmq({'content': 'content'}, 'chan')
-		self.assertEquals(client._pub_controller.publish_channel, 'chan')
+		client._send_to_zmq({'content'.encode('utf-8'):
+				'content'.encode('utf-8')}, 'chan'.encode('utf-8'))
+		self.assertEquals(client._pub_controller.publish_channel,
+				'chan'.encode('utf-8'))
 		self.assertEquals(client._pub_controller.publish_content,
-				tnetstring.dumps({'content': 'content'}))
+				tnetstring.dumps({'content'.encode('utf-8'):
+				'content'.encode('utf-8')}))
 
 	def test_verify_not_closed(self):
 		client = ZmqPubControlClientTestClass2('uri')
@@ -349,6 +337,9 @@ class TestZmqPubControlClient(unittest.TestCase):
 	def test_discover_uris(self):
 		global pollin_response
 		global pollout_response
+		global discovery_result
+		global failed_discovery_result1
+		global failed_discovery_result2
 		time.clock = time.time
 		client = ZmqPubControlClientTestClass4('uri', 'push_uri', 'pub_uri')
 		client._discover_uris()
@@ -390,13 +381,14 @@ class TestZmqPubControlClient(unittest.TestCase):
 				poll_params[1][1], zmq.POLLIN)
 		self.assertTrue(client._context.last_socket_created.closed)
 		self.assertEquals(client._context.last_socket_created.send_data,
-				tnetstring.dumps({'method': 'get-zmq-uris'}))
-		self.assertEquals(client.resolve_uris[0], 'publish-pull')
-		self.assertEquals(client.resolve_uris[1], 'publish-sub')
+				tnetstring.dumps({'method'.encode('utf-8'):
+				'get-zmq-uris'.encode('utf-8')}))
+		self.assertEquals(client.resolve_uris[0], 'publish-pull'.encode('utf-8'))
+		self.assertEquals(client.resolve_uris[1], 'publish-sub'.encode('utf-8'))
 		self.assertEquals(client.resolve_hosts[0], 'localhost')
 		self.assertEquals(client.resolve_hosts[1], 'localhost')
-		self.assertEquals(client.push_uri, 'publish-pull')
-		self.assertEquals(client.pub_uri, 'publish-sub')
+		self.assertEquals(client.push_uri, 'publish-pull'.encode('utf-8'))
+		self.assertEquals(client.pub_uri, 'publish-sub'.encode('utf-8'))
 		client = ZmqPubControlClientTestClass4('tcp://localhost:5563',
 				'push_uri', 'pub_uri')
 		client.pub_uri = None
@@ -439,15 +431,26 @@ class TestZmqPubControlClient(unittest.TestCase):
 		self.assertEquals(client._context.last_socket_created.
 				connect_uri, 'uri')
 		self.assertTrue(client._context.last_socket_created.closed)
-		self.assertEquals(client.resolve_uris[0], 'publish-pull')
-		self.assertEquals(client.resolve_uris[1], 'publish-sub')
+		self.assertEquals(client.resolve_uris[0], 'publish-pull'.encode('utf-8'))
+		self.assertEquals(client.resolve_uris[1], 'publish-sub'.encode('utf-8'))
 		self.assertEquals(client.resolve_hosts[0], None)
 		self.assertEquals(client.resolve_hosts[1], None)
 		client = ZmqPubControlClientTestClass4('tcp://localhost:5563',
 				'push_uri', 'pub_uri')
 		client.pub_uri = None
 		client.push_uri = None
-		client._context = ZmqContextTestClass2()
+		client._context = ZmqContextTestClass()
+		discovery_result = failed_discovery_result1
+		client.resp = False
+		with self.assertRaises(ValueError):
+			client._discover_uris()
+		self.assertTrue(client._context.last_socket_created.closed)
+		client = ZmqPubControlClientTestClass4('tcp://localhost:5563',
+				'push_uri', 'pub_uri')
+		client.pub_uri = None
+		client.push_uri = None
+		client._context = ZmqContextTestClass()
+		discovery_result = failed_discovery_result2
 		client.resp = False
 		with self.assertRaises(ValueError):
 			client._discover_uris()
@@ -456,7 +459,8 @@ class TestZmqPubControlClient(unittest.TestCase):
 	def test_set_discovered_uris(self):
 		client = ZmqPubControlClientTestClass5('uri',
 				'push_uri', 'pub_uri')
-		result = {'publish-pull': 'push', 'publish-sub': 'pub'}
+		result = {'publish-pull'.encode('utf-8'): 'push'.encode('utf-8'),
+				'publish-sub'.encode('utf-8'): 'pub'.encode('utf-8')}
 		client._set_discovered_uris(result)
 		self.assertEqual(client.push_uri, 'push_uri')
 		self.assertEqual(client.pub_uri, 'pub_uri')
@@ -464,8 +468,8 @@ class TestZmqPubControlClient(unittest.TestCase):
 		client.push_uri = None
 		client.pub_uri = None
 		client._set_discovered_uris(result)
-		self.assertEqual(client.push_uri, 'push')
-		self.assertEqual(client.pub_uri, 'pub')
+		self.assertEqual(client.push_uri, 'push'.encode('utf-8'))
+		self.assertEqual(client.pub_uri, 'pub'.encode('utf-8'))
 		self.assertEquals(client.command_uri, 'uri')
 		client.push_uri = None
 		client.pub_uri = None
@@ -484,11 +488,11 @@ class TestZmqPubControlClient(unittest.TestCase):
 		client = ZmqPubControlClientTestClass('uri')
 		self.assertEquals(client._resolve_uri('uri', 'host'), 'uri')
 		self.assertEquals(client._resolve_uri('tcp://localhost:5000',
-			'host'), 'tcp://localhost:5000')
+				'host'), 'tcp://localhost:5000')
 		self.assertEquals(client._resolve_uri('tcp://*:5000',
-			'host'), 'tcp://host:5000')
+				'host'), 'tcp://host:5000')
 		self.assertEquals(client._resolve_uri('tcp://*:5000',
-			None), 'tcp://localhost:5000')
+				None), 'tcp://localhost:5000')
 
 if __name__ == '__main__':
 		unittest.main()
