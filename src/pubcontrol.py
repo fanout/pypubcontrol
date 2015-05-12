@@ -61,13 +61,12 @@ class PubControl(object):
 	# the first parameter a string containing 'sub' or 'unsub' and the second
 	# parameter containing the channel name. Optionally specify a ZMQ context
 	# to use otherwise the global ZMQ context will be used.
-	def __init__(self, config=None, sub_callback=None, zmq_context=None):
+	def __init__(self, config=None, sub_callback=None,
+			zmq_context=zmq.Context.instance()):
 		self._lock = threading.Lock()
 		self._sub_callback = sub_callback
 		self._zmq_pub_controller = None
 		self._zmq_ctx = zmq_context
-		if self._zmq_ctx is None:
-			self._zmq_ctx = zmq.Context.instance()
 		self.clients = list()
 		self.closed = False
 		if config:

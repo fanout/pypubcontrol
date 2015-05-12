@@ -32,6 +32,12 @@ class TestFormatSubClass(Format):
 		return {'body': 'bodyvalue'}
 
 class PubControlTestClass(PubControl):
+	def close(self):
+		self.close_called = True
+
+	def _verify_not_closed(self):
+		self.verify_not_closed_called = True
+
 	def _send_to_zmq(self, channel, item):
 		self.channel = channel
 		self.item = item
@@ -51,8 +57,11 @@ class PubControlClientTestClass():
 		self.publish_blocking = None
 		self.publish_callback = None
 
-	def finish(self):
-		self.was_finish_called = True
+	def wait_all_sent(self):
+		self.wait_all_sent_called = True
+
+	def close(self):
+		self.close_called = True
 
 	def publish(self, channel, item, blocking=False, callback=None):
 		self.publish_channel = channel
@@ -96,7 +105,7 @@ class ZmqPubControlClientTestClass2():
 		self.zmq_context = zmq_context
 
 class TestPubControl(unittest.TestCase):
-	def test_close_zmqpubcontrols(self):
+	def test_close_pubcontrols(self):
 		pubcontroltest._zmqpubcontrols = list()
 		pub1 = PubControl()
 		pub2 = PubControl()
@@ -110,9 +119,9 @@ class TestPubControl(unittest.TestCase):
 		pc = PubControl()
 		self.assertEqual(len(pc.clients), 0)
 		self.assertEqual(pc._sub_callback, None)
-		self.assertEqual(pc._zmq_sub_monitor, None)
-		self.assertEqual(pc._zmq_sock, None)
+		self.assertEqual(pc._zmq_pub_controller, None)
 		self.assertNotEqual(pc._zmq_ctx, None)
+		self.assertTrue(pc in pubcontroltest._pubcontrols)
 		pc = PubControl(None, 'subcallback', 'zmqcontext')
 		self.assertEqual(pc._sub_callback, 'subcallback')
 		self.assertEqual(pc._zmq_ctx, 'zmqcontext')
@@ -124,33 +133,45 @@ class TestPubControl(unittest.TestCase):
 				{'uri': 'uri', 'iss': 'iss', 'key': 'key'}]
 		pc = PubControl(config)
 		self.assertEqual(len(pc.clients), 2)
-		pubcontroltest.zmq = None
-		pc = PubControl()
-		self.assertEqual(pc._zmq_ctx, None)
-		pubcontroltest.zmq = zmq
-"""
-	def test_remove_all_clients(self):
-		pc = PubControl()
-		sock = ZmqSocketTestClass()
-		pc._zmq_sock = sock
-		pc.clients.append(PubControlClient('uri'))
-		zmqclient = ZmqPubControlClientTestClass()
-		pc.clients.append(zmqclient)
-		pc.remove_all_clients()
-		self.assertTrue(sock.closed)
-		self.assertTrue(zmqclient.closed)
-		self.assertEqual(len(pc.clients), 0)
-		self.assertEqual(pc._zmq_sock, None)
+		self.assertEqual(pc._zmq_ctx, zmq.Context.instance())
 
 	def test_add_client(self):
-		pc = PubControl()
+		pc = PubControlTestClass()
 		pc.add_client('client')
+		self.assertTrue(pc.verify_not_closed_called)
 		self.assertEqual(pc.clients[0], 'client')
 
+	def test_finish(self):
+		pc = PubControlTestClass()
+		pccs = []
+		for n in range(0, 3):
+			pcc = PubControlClientTestClass()
+			pccs.append(pcc)
+			pc.add_client(pcc)
+		pc.finish()
+		self.assertTrue(pc.verify_not_closed_called)
+		for n in range(0, 3):
+			self.assertTrue(pccs[n].wait_all_sent_called)
+
+	def test_wait_all_sent(self):
+		pc = PubControlTestClass()
+		pccs = []
+		for n in range(0, 3):
+			pcc = PubControlClientTestClass()
+			pccs.append(pcc)
+			pc.add_client(pcc)
+		pc.wait_all_sent()
+		self.assertTrue(pc.verify_not_closed_called)
+		for n in range(0, 3):
+			self.assertTrue(pccs[n].wait_all_sent_called)
+
+"""
+	
 	def test_apply_config(self):
 		pc = PubControl()
 		config = {'uri': 'uri'}
 		pc.apply_config(config)
+		self.assertTrue(pc.verify_not_closed_called)
 		self.assertEqual(pc.clients[0].uri, 'uri')
 		pc = PubControlTestClass()
 		pubcontroltest.ZmqPubControlClient = ZmqPubControlClientTestClass2
@@ -231,17 +252,6 @@ class TestPubControl(unittest.TestCase):
 		with self.assertRaises(ValueError):
 			pc.apply_config(config)
 
-	def test_finish(self):
-		pc = PubControl()
-		pccs = []
-		for n in range(0, 3):
-			pcc = PubControlClientTestClass()
-			pccs.append(pcc)
-			pc.add_client(pcc)
-		pc.finish()
-		for n in range(0, 3):
-			self.assertTrue(pccs[n].was_finish_called)
-
 	def test_publish_blocking(self):
 		pc = PubControl()
 		pccs = []
@@ -250,6 +260,7 @@ class TestPubControl(unittest.TestCase):
 			pccs.append(pcc)
 			pc.add_client(pcc)
 		pc.publish('channel', 'item', True)
+		self.assertTrue(pc.verify_not_closed_called)
 		for n in range(0, 3):
 			self.assertEqual(pccs[n].publish_channel, 'channel')
 			self.assertEqual(pccs[n].publish_item, 'item')

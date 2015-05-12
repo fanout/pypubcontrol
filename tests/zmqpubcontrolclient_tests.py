@@ -72,6 +72,9 @@ class ZmqPubControlClientTestClass(zmqpcc.ZmqPubControlClient):
 		self.send_channel = channel
 
 class ZmqPubControlClientTestClass2(zmqpcc.ZmqPubControlClient):
+	def _verify_not_closed(self):
+		self.verify_not_closed_called = True
+
 	def _verify_uri_config(self):
 		self.verify_uri_config_called = True
 
@@ -265,6 +268,7 @@ class TestZmqPubControlClient(unittest.TestCase):
 		client._require_subscribers = True
 		client._disable_pub = True
 		client.connect_zmq()
+		self.assertTrue(client.verify_not_closed_called)
 		self.assertEquals(client._push_sock, None)
 		self.assertEquals(client._pub_controller, None)
 		client = ZmqPubControlClientTestClass2('uri')
@@ -328,7 +332,7 @@ class TestZmqPubControlClient(unittest.TestCase):
 				'content'.encode('utf-8')}))
 
 	def test_verify_not_closed(self):
-		client = ZmqPubControlClientTestClass2('uri')
+		client = ZmqPubControlClientTestClass3('uri')
 		client._verify_not_closed()
 		client.closed = True
 		with self.assertRaises(ValueError):
