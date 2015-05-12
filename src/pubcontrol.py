@@ -113,9 +113,7 @@ class PubControl(object):
 				if ('zmq_uri' in entry or 'zmq_push_uri' in entry or
 						'zmq_pub_uri' in entry):
 					_verify_zmq()
-					require_subscribers = entry.get('zmq_require_subscribers')
-					if require_subscribers is None:
-						require_subscribers = False
+					require_subscribers = entry.get('require_subscribers', False)
 					client = ZmqPubControlClient(entry.get('zmq_uri'),
 							entry.get('zmq_push_uri'), entry.get('zmq_pub_uri'),
 							require_subscribers, True, None, self._zmq_ctx)
@@ -141,18 +139,22 @@ class PubControl(object):
 	# callback method along with the first encountered error message.
 	def publish(self, channel, item, blocking=False, callback=None):
 		self._verify_not_closed()
-		self._send_to_zmq(channel, item)
-		if blocking:
-			for client in self.clients:
-				client.publish(channel, item, blocking=True)
-		else:
+		cb = callback
+		if not blocking:
 			if callback:
 				cb = PubControlClientCallbackHandler(len(self.clients),
 						callback).handler
-			else:
-				cb = None
-			for client in self.clients:
-				client.publish(channel, item, blocking=False, callback=cb)
+		for client in self.clients:
+			need_zmq_pub_discovery = False
+			if ('ZmqPubControlClient' in client.__class__.__name__ and
+					client.pub_uri is None and client._require_subscribers and
+					not client._discovery_completed):
+				need_zmq_pub_discovery = True
+			client.publish(channel, item, blocking=blocking, callback=cb)
+			if (need_zmq_pub_discovery and client._discovery_completed and
+					client.pub_uri):
+				self._connect_zmq_pub_uri(client.pub_uri)
+		self._send_to_zmq(channel, item)				
 
 	# The close method is a blocking call that closes all ZMQ sockets and
 	# ensures that all PubControlClient async publishing is completed prior

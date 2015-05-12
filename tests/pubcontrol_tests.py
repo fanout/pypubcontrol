@@ -185,7 +185,7 @@ class TestPubControl(unittest.TestCase):
 						'zmq_pub_uri': 'zmq_pub_uri2'},
 				{'zmq_uri': 'zmq_uri3', 'zmq_push_uri': 'zmq_push_uri3', 
 						'zmq_pub_uri': 'zmq_pub_uri3',
-						'zmq_require_subscribers': True}]
+						'require_subscribers': True}]
 		pc.apply_config(config)
 		self.assertEqual(pc.clients[0].uri, 'uri')
 		self.assertEqual(pc.clients[0].auth_jwt_claim, None)
@@ -248,7 +248,7 @@ class TestPubControl(unittest.TestCase):
 
 	def test_apply_config_exception3(self):
 		pc = pubcontroltest.PubControl()
-		config = [{'zmq_require_subscribers': True}]
+		config = [{'require_subscribers': True}]
 		with self.assertRaises(ValueError):
 			pc.apply_config(config)
 
