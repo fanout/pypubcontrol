@@ -498,5 +498,20 @@ class TestZmqPubControlClient(unittest.TestCase):
 		self.assertEquals(client._resolve_uri('tcp://*:5000',
 				None), 'tcp://localhost:5000')
 
+	def test_discovery_required_for_pub(self):
+		client = ZmqPubControlClientTestClass('uri')
+		client.pub_uri = None
+		client._require_subscribers = True
+		client._discovery_completed = False
+		self.assertTrue(client._discovery_required_for_pub())
+		client.pub_uri = 'uri'
+		self.assertFalse(client._discovery_required_for_pub())
+		client.pub_uri = None
+		client._require_subscribers = False
+		self.assertFalse(client._discovery_required_for_pub())
+		client._require_subscribers = True
+		client._discovery_completed = True
+		self.assertFalse(client._discovery_required_for_pub())
+
 if __name__ == '__main__':
 		unittest.main()

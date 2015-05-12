@@ -147,12 +147,10 @@ class PubControl(object):
 		for client in self.clients:
 			need_zmq_pub_discovery = False
 			if ('ZmqPubControlClient' in client.__class__.__name__ and
-					client.pub_uri is None and client._require_subscribers and
-					not client._discovery_completed):
+					client._discovery_required_for_pub()):
 				need_zmq_pub_discovery = True
 			client.publish(channel, item, blocking=blocking, callback=cb)
-			if (need_zmq_pub_discovery and client._discovery_completed and
-					client.pub_uri):
+			if (need_zmq_pub_discovery and not client._discovery_required_for_pub()):
 				self._connect_zmq_pub_uri(client.pub_uri)
 		self._send_to_zmq(channel, item)				
 
@@ -233,7 +231,7 @@ class PubControl(object):
 		executeCallback = True
 		for client in self.clients:
 			if client._zmq_pub_controller:
-				if chan in client._sub_monitor.subscriptions:
+				if chan in client._zmq_pub_controller.subscriptions:
 					executeCallback = False
 					break
 		if (executeCallback and

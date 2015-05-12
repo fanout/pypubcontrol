@@ -71,6 +71,7 @@ class ZmqPubControlClient(object):
 		self._disable_pub = disable_pub
 		self._sub_callback = sub_callback
 		self._lock = threading.Lock()
+		self._discover_lock = threading.Lock()
 		self._push_sock = None
 		self._pub_controller = None
 		try:
@@ -84,23 +85,21 @@ class ZmqPubControlClient(object):
 		_lock.release()
 
 	# The publish method for publishing the specified item to the specified
-	# channel on the configured ZMQ endpoint. Note that ZMQ publishes are
-	# always non-blocking regardless of whether the blocking parameter is set.
-	# Also, if a callback is specified, the callback will always be called with
-	# a result that is set to true.
+	# channel on the configured ZMQ endpoint. A non-blocking publish is
+	# executed on a separate thread. Note that ZMQ publishes themselves are
+	# non-blocking and will always result in a successful result being
+	# sent to the callback (if a callback is specified). A failed publish
+	# can only result from a failure to discover the PUSH / PUB URIs from
+	# the command URI (if discovery occurs).
 	def publish(self, channel, item, blocking=False, callback=None):
 		self._verify_not_closed()
-		self._discover_uris()
-		self.connect_zmq()
-		if self._push_sock is None and self._pub_controller is None:
-			if callback:
-				callback(True, '')
-			return
-		i = item.export(True, True)
-		channel = _ensure_utf8(channel)
-		self._send_to_zmq(i, channel)
-		if callback:
-			callback(True, '')
+		if blocking:
+			self._publish(channel, item, blocking, callback)
+		else:
+			thread = threading.Thread(target=self._publish,
+				args=(channel, item, blocking, callback))
+			thread.daemon = True
+			thread.start()
 
 	# The close method is a blocking call that closes all ZMQ sockets prior
 	# to returning and allowing the consumer to proceed. Note that the
@@ -140,6 +139,29 @@ class ZmqPubControlClient(object):
 				self._push_sock.linger = 0
 		self._lock.release()
 
+	# An internal method for publishing the specified item to the specified
+	# channel on the configured ZMQ endpoint. This method is meant to run
+	# either synchronously or asynchronously depending on whether the blocking
+	# parameter is set to true or false.
+	def _publish(self, channel, item, blocking=False, callback=None):
+		try:
+			self._discover_uris()
+			self.connect_zmq()
+			if self._push_sock is None and self._pub_controller is None:
+				if callback:
+					callback(True, '')
+				return
+			i = item.export(True, True)
+			channel = _ensure_utf8(channel)
+			self._send_to_zmq(i, channel)
+			if not blocking and callback:
+				callback(True, '')
+		except Exception as e:
+			if not blocking and callback:
+				callback(False, 'failed to publish: ' + str(e))
+			elif blocking:
+				raise ValueError('failed to publish: ' + str(e))
+
 	# An internal method for ensuring that the ZMQ URIs are properly set
 	# relative to the require_subscribers and disable_pub booleans.
 	def _verify_uri_config(self):
@@ -176,28 +198,34 @@ class ZmqPubControlClient(object):
 	# command URI is availabe. If either a PUB or a PUSH URI was already
 	# specified by the consumer then those will be used.
 	def _discover_uris(self):
+		self._discover_lock.acquire()
 		if (self.uri is None or self._discovery_completed or
 				(self.pub_uri and self.push_uri)):
+			self._discover_lock.release()
 			return
 		sock = self._context.socket(zmq.REQ)
 		sock.connect(self.uri)
 		start = int(timeit.default_timer() * 1000)
 		if not sock.poll(3000, zmq.POLLOUT):
 			sock.close()
+			self._discover_lock.release()
 			raise ValueError('uri discovery request failed: pollout timeout')
 		req = {'method'.encode('utf-8'): 'get-zmq-uris'.encode('utf-8')}
 		sock.send(tnetstring.dumps(req))
 		elapsed = max(int(timeit.default_timer() * 1000) - start, 0)
 		if not sock.poll(max(3000 - elapsed, 0), zmq.POLLIN):
 			sock.close()
+			self._discover_lock.release()
 			raise ValueError('uri discovery request failed: pollin timeout')
 		resp = tnetstring.loads(sock.recv())
 		sock.close()
 		if (not resp.get('success'.encode('utf-8')) or
 				not resp.get('value'.encode('utf-8'))):
+			self._discover_lock.release()
 			raise ValueError('uri discovery request failed: %s' % resp)
 		self._set_discovered_uris(resp['value'.encode('utf-8')])		
 		self._discovery_completed = True
+		self._discover_lock.release()
 
 	# An internal method for setting the URIs discovered via the command URI.
 	# If the push and pub URIs were not explicitly set and neither was
@@ -235,3 +263,9 @@ class ZmqPubControlClient(object):
 				else:
 					return uri[0:6] + 'localhost' + uri[at:]
 		return uri
+
+	# An internal method for determining whether discovery is still required
+	# for the PUB socket.
+	def _discovery_required_for_pub(self):
+		return (self.pub_uri is None and self._require_subscribers and
+				not self._discovery_completed)
