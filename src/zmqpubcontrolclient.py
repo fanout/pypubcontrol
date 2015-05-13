@@ -94,7 +94,7 @@ class ZmqPubControlClient(object):
 	# the command URI (if discovery occurs).
 	def publish(self, channel, item, blocking=False, callback=None):
 		self._verify_not_closed()
-		if blocking:
+		if self._discovery_completed or blocking:
 			self._publish(channel, item, blocking, callback)
 		else:
 			thread = threading.Thread(target=self._publish,
@@ -236,7 +236,7 @@ class ZmqPubControlClient(object):
 		self._verify_discovered_uris()
 
 	# An internal method for ending the discovery process by acquiring the
-	# threading condition, setting required boolean accordingly, and notifying
+	# threading condition, setting required booleans accordingly, and notifying
 	# all waiting threads. If the discovery succeeded then connect_zmq() is called.
 	def _end_discovery(self, succeeded):
 		self._thread_cond.acquire()
