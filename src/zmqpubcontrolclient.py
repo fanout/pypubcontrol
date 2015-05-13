@@ -63,23 +63,24 @@ class ZmqPubControlClient(object):
 		self.pub_uri = pub_uri
 		self.push_uri = push_uri
 		self._context = context
-		self._discovery_completed = False;
+		self._discovery_completed = False
+		self._discovery_in_progress = False
 		if self._context is None:
 			self._context = zmq.Context.instance()
 		self.closed = False
 		self._require_subscribers = require_subscribers
 		self._disable_pub = disable_pub
 		self._sub_callback = sub_callback
+		self._thread_cond = threading.Condition()
 		self._lock = threading.Lock()
-		self._discover_lock = threading.Lock()
 		self._push_sock = None
 		self._pub_controller = None
-		try:
-			self._discover_uris()
-		except ValueError:
-			pass
-		if self.push_uri or self.pub_uri:
+		if ((self.push_uri and not require_subscribers) or
+				(self.pub_uri and require_subscribers)):
 			self.connect_zmq()
+		thread = threading.Thread(target=self._discover_uris_async)
+		thread.daemon = True
+		thread.start()
 		_lock.acquire()
 		_zmqpubcontrolclients.append(self)
 		_lock.release()
@@ -146,7 +147,6 @@ class ZmqPubControlClient(object):
 	def _publish(self, channel, item, blocking=False, callback=None):
 		try:
 			self._discover_uris()
-			self.connect_zmq()
 			if self._push_sock is None and self._pub_controller is None:
 				if callback:
 					callback(True, '')
@@ -198,34 +198,62 @@ class ZmqPubControlClient(object):
 	# command URI is availabe. If either a PUB or a PUSH URI was already
 	# specified by the consumer then those will be used.
 	def _discover_uris(self):
-		self._discover_lock.acquire()
+		self._thread_cond.acquire()
+		if self._discovery_in_progress:
+			self._thread_cond.wait()
+			self._thread_cond.release()
+			self._verify_discovered_uris()
+			return
+		else:
+			self._discovery_in_progress = True
+			self._thread_cond.release()
 		if (self.uri is None or self._discovery_completed or
 				(self.pub_uri and self.push_uri)):
-			self._discover_lock.release()
+			self._end_discovery(False)
 			return
 		sock = self._context.socket(zmq.REQ)
 		sock.connect(self.uri)
 		start = int(timeit.default_timer() * 1000)
 		if not sock.poll(3000, zmq.POLLOUT):
 			sock.close()
-			self._discover_lock.release()
+			self._end_discovery(False)
 			raise ValueError('uri discovery request failed: pollout timeout')
 		req = {'method'.encode('utf-8'): 'get-zmq-uris'.encode('utf-8')}
 		sock.send(tnetstring.dumps(req))
 		elapsed = max(int(timeit.default_timer() * 1000) - start, 0)
 		if not sock.poll(max(3000 - elapsed, 0), zmq.POLLIN):
 			sock.close()
-			self._discover_lock.release()
+			self._end_discovery(False)
 			raise ValueError('uri discovery request failed: pollin timeout')
 		resp = tnetstring.loads(sock.recv())
 		sock.close()
 		if (not resp.get('success'.encode('utf-8')) or
 				not resp.get('value'.encode('utf-8'))):
-			self._discover_lock.release()
+			self._end_discovery(False)
 			raise ValueError('uri discovery request failed: %s' % resp)
-		self._set_discovered_uris(resp['value'.encode('utf-8')])		
-		self._discovery_completed = True
-		self._discover_lock.release()
+		self._set_discovered_uris(resp['value'.encode('utf-8')])
+		self._end_discovery(True)
+		self._verify_discovered_uris()
+
+	# An internal method for ending the discovery process by acquiring the
+	# threading condition, setting required boolean accordingly, and notifying
+	# all waiting threads. If the discovery succeeded then connect_zmq() is called.
+	def _end_discovery(self, succeeded):
+		self._thread_cond.acquire()
+		if succeeded:
+			self._discovery_completed = True
+			self.connect_zmq()
+		self._discovery_in_progress = False
+		self._thread_cond.notify_all()
+		self._thread_cond.release()
+
+	# An internal method used for executing the URI discovery on a separate
+	# thread and swallowing any caught exceptions.
+	def _discover_uris_async(self):
+		try:
+			self._discover_uris()
+		except:
+			pass
 
 	# An internal method for setting the URIs discovered via the command URI.
 	# If the push and pub URIs were not explicitly set and neither was
@@ -240,6 +268,10 @@ class ZmqPubControlClient(object):
 					'publish-sub'.encode('utf-8') in discovery_result):
 			self.pub_uri = self._resolve_uri(
 					discovery_result['publish-sub'.encode('utf-8')], command_host)
+
+	# An internal method for verifying the discovered URIs. If neither the
+	# PUSH or PUB URI was discovered then an exception is raised.
+	def _verify_discovered_uris(self):
 		if self.push_uri is None and self.pub_uri is None:
 			raise ValueError('uri discovery request failed: no uris discovered')
 
