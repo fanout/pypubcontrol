@@ -242,7 +242,17 @@ class ZmqPubControlClient(object):
 		self._thread_cond.acquire()
 		if succeeded:
 			self._discovery_completed = True
-			self.connect_zmq()
+			try:
+				self.connect_zmq()
+			except:
+				self._cleanup_discovery()
+				raise
+		self._cleanup_discovery()
+
+	# An internal method for cleaning up the discovery process by setting
+	# the appropriate boolean, notifying threads waiting on discovery, and
+	# releasing the thread condition.
+	def _cleanup_discovery(self):
 		self._discovery_in_progress = False
 		self._thread_cond.notify_all()
 		self._thread_cond.release()
