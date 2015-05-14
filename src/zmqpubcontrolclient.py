@@ -147,6 +147,7 @@ class ZmqPubControlClient(object):
 	def _publish(self, channel, item, blocking=False, callback=None):
 		try:
 			self._discover_uris()
+			self._verify_uri_config()
 			if self._push_sock is None and self._pub_controller is None:
 				if callback:
 					callback(True, '')
