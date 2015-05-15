@@ -9,8 +9,7 @@ class TestFormatSubClass(Format):
 	def name(self):
 		return 'name'
 
-	def export(self, tnetstring=False):
-		self.tnetstring = tnetstring
+	def export(self):
 		return {'body': 'bodyvalue'}
 
 class TestFormatSubClass2(Format):
@@ -49,9 +48,8 @@ class TestItem(unittest.TestCase):
 		self.verify_unicode(out['id'], 'id')
 		self.verify_unicode(out['prev-id'], 'prev-id')
 		out = Item(format, 'id', 'prev-id').export(False, True)
-		self.assertTrue(format.tnetstring)
-		self.verify_utf8(out['id'], 'id')
-		self.verify_utf8(out['prev-id'], 'prev-id')
+		self.verify_utf8(out['id'.encode('utf-8')], 'id')
+		self.verify_utf8(out['prev-id'.encode('utf-8')], 'prev-id')
 
 	def test_export_same_format_type(self):
 		item = Item([TestFormatSubClass(), TestFormatSubClass()])

@@ -12,8 +12,7 @@ class TestFormatSubClass(Format):
 	def name(self):
 		return 'name'
 
-	def export(self, tnetstring=False):
-		self.tnetstring = True
+	def export(self):
 		return {'body': 'bodyvalue'}
 
 pollin_response = 1
@@ -622,7 +621,6 @@ class TestZmqPubControlClient(unittest.TestCase):
 		client._require_subscribers = True
 		client._discovery_completed = True
 		self.assertFalse(client._discovery_required_for_pub())
-
 
 	def test_get_command_host(self):
 		client = ZmqPubControlClientTestClass4('uri',

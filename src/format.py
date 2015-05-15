@@ -16,7 +16,6 @@ class Format(object):
 		pass
 
 	# The export method which should return a format-specific hash
-	# containing the required format-specific data. If the tnetstring
-    # parameter is set then the format should be exported as binary.
-	def export(self, tnetstring=False):
+	# containing the required format-specific data.
+	def export(self):
 		pass

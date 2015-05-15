@@ -23,11 +23,6 @@ try:
 except ImportError:
 	tnetstring = None
 
-
-# TODO: Determine if isinstance will work with the unit tests.
-# TODO: Verify with Python 3.
-
-
 # The global list of PubControl instances used to ensure that each instance
 # is properly closed on exit.
 _pubcontrols = list()
@@ -79,7 +74,7 @@ class PubControl(object):
 	def remove_all_clients(self):
 		self._verify_not_closed()
 		for client in self.clients:
-			if 'ZmqPubControlClient' in client.__class__.__name__:
+			if hasattr(client, 'close'):
 				client.close()
 		self.clients = list()
 
@@ -146,13 +141,13 @@ class PubControl(object):
 						callback).handler
 		for client in self.clients:
 			need_zmq_pub_discovery = False
-			if ('ZmqPubControlClient' in client.__class__.__name__ and
+			if (hasattr(client, '_discovery_required_for_pub') and 
 					client._discovery_required_for_pub()):
 				need_zmq_pub_discovery = True
 			client.publish(channel, item, blocking=blocking, callback=cb)
 			if (need_zmq_pub_discovery and not client._discovery_required_for_pub()):
 				self._connect_zmq_pub_uri(client.pub_uri)
-		self._send_to_zmq(channel, item)				
+		self._send_to_zmq(channel, item)
 
 	# The close method is a blocking call that closes all ZMQ sockets and
 	# ensures that all PubControlClient async publishing is completed prior
@@ -179,7 +174,7 @@ class PubControl(object):
 	def wait_all_sent(self):
 		self._verify_not_closed()
 		for client in self.clients:
-			if 'ZmqPubControlClient' not in client.__class__.__name__:
+			if hasattr(client, 'wait_all_sent'):
 				client.wait_all_sent()
 
 	# DEPRECATED: The finish method is now deprecated in favor of the more
@@ -196,14 +191,14 @@ class PubControl(object):
 		if self._zmq_pub_controller is None:
 			self._zmq_pub_controller = ZmqPubController(self._sub_callback,
 					self._zmq_ctx)
-		self._zmq_pub_controller.connect(uri)
+		self._zmq_pub_controller.connect(_ensure_utf8(uri))
 		self._lock.release()
 
 	# An internal method for disconnecting from a ZMQ PUB URI.
 	def _disconnect_zmq_pub_uri(self, uri):
 		if self._zmq_pub_controller:
 			self._lock.acquire()
-			self._zmq_pub_controller.disconnect(uri)
+			self._zmq_pub_controller.disconnect(_ensure_utf8(uri))
 			self._lock.release()
 
 	# An internal method for sending a ZMQ message for publishing to the

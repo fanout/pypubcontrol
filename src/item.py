@@ -31,9 +31,9 @@ class Item(object):
 	# instance of the same type of Format implementation was specified then
 	# an error will be raised. If the formats_field parameter is set to true
 	# then the formats will be exported within their own 'formats' key. If
-	# the tnetstring parameter is set to true then ID and previous ID are
-	# encoded as UTF-8, whereas if it is set to false then ID and previous ID
-	# are decoded as unicode.
+	# the tnetstring parameter is set to true then all keys and values are
+	# encoded at UTF8. Conversely, if the tnetstring parameter is set to
+	# false then all keys and values are encoded as unicode.
 	def export(self, formats_field=False, tnetstring=False):
 		format_types = []
 		for format in self.formats:
@@ -43,26 +43,18 @@ class Item(object):
 			format_types.append(format.__class__.__name__)
 		out = dict()
 		if self.id:
-			if tnetstring:
-				out['id'] = _ensure_utf8(self.id)
-			else:
-				out['id'] = _ensure_unicode(self.id)
+			out['id'] = self.id
 		if self.prev_id:
-			if tnetstring:
-				out['prev-id'] = _ensure_utf8(self.prev_id)
-			else:
-				out['prev-id'] = _ensure_unicode(self.prev_id)
+			out['prev-id'] = self.prev_id
 		if formats_field:
 			out['formats'] = dict()
 			for f in self.formats:
-				if tnetstring:
-					out['formats'][f.name()] = f.export(tnetstring)
-				else:
-					out['formats'][f.name()] = f.export()
+				out['formats'][f.name()] = f.export()
 		else:
 			for f in self.formats:
-				if tnetstring:
-					out[f.name()] = f.export(tnetstring)
-				else:
-					out[f.name()] = f.export()
+				out[f.name()] = f.export()
+		if tnetstring:
+			out = _ensure_utf8(out)
+		else:
+			out = _ensure_unicode(out)
 		return out

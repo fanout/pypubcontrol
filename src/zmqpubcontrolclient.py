@@ -133,7 +133,7 @@ class ZmqPubControlClient(object):
 			if not self._disable_pub and self._require_subscribers:
 				self._pub_controller = ZmqPubController(self._sub_callback,
 						self._context)
-				self._pub_controller.connect(self.pub_uri)
+				self._pub_controller.connect(_ensure_utf8(self.pub_uri))
 			elif not self._require_subscribers:
 				self._push_sock = self._context.socket(zmq.PUSH)
 				self._push_sock.connect(self.push_uri)
@@ -181,7 +181,7 @@ class ZmqPubControlClient(object):
 	def _send_to_zmq(self, content, channel):
 		self._lock.acquire()
 		if self._push_sock:
-			content['channel'.encode('utf-8')] = channel
+			content[_ensure_utf8('channel')] = channel
 			self._push_sock.send(tnetstring.dumps(content))
 		else:
 			self._pub_controller.publish(channel,
@@ -219,7 +219,7 @@ class ZmqPubControlClient(object):
 			sock.close()
 			self._end_discovery(False)
 			raise ValueError('uri discovery request failed: pollout timeout')
-		req = {'method'.encode('utf-8'): 'get-zmq-uris'.encode('utf-8')}
+		req = {_ensure_utf8('method'): _ensure_utf8('get-zmq-uris')}
 		sock.send(tnetstring.dumps(req))
 		elapsed = max(int(timeit.default_timer() * 1000) - start, 0)
 		if not sock.poll(max(3000 - elapsed, 0), zmq.POLLIN):
@@ -228,11 +228,11 @@ class ZmqPubControlClient(object):
 			raise ValueError('uri discovery request failed: pollin timeout')
 		resp = tnetstring.loads(sock.recv())
 		sock.close()
-		if (not resp.get('success'.encode('utf-8')) or
-				not resp.get('value'.encode('utf-8'))):
+		if (not resp.get(_ensure_utf8('success')) or
+				not resp.get(_ensure_utf8('value'))):
 			self._end_discovery(False)
 			raise ValueError('uri discovery request failed: %s' % resp)
-		self._set_discovered_uris(resp['value'.encode('utf-8')])
+		self._set_discovered_uris(resp[_ensure_utf8('value')])
 		self._end_discovery(True)
 		self._verify_discovered_uris()
 
@@ -272,13 +272,13 @@ class ZmqPubControlClient(object):
 	def _set_discovered_uris(self, discovery_result):
 		command_host = self._get_command_host(self.uri)
 		if (self.push_uri is None and
-				'publish-pull'.encode('utf-8') in discovery_result):
+				_ensure_utf8('publish-pull') in discovery_result):
 			self.push_uri = self._resolve_uri(
-					discovery_result['publish-pull'.encode('utf-8')], command_host)
+					discovery_result[_ensure_utf8('publish-pull')], command_host)
 		if (self.pub_uri is None and
-					'publish-sub'.encode('utf-8') in discovery_result):
+					_ensure_utf8('publish-sub') in discovery_result):
 			self.pub_uri = self._resolve_uri(
-					discovery_result['publish-sub'.encode('utf-8')], command_host)
+					discovery_result[_ensure_utf8('publish-sub')], command_host)
 
 	# An internal method for verifying the discovered URIs. If neither the
 	# PUSH or PUB URI was discovered then an exception is raised.

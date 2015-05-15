@@ -6,7 +6,7 @@
 #    :license: MIT, see LICENSE for more details.
 
 import threading
-from .utilities import _verify_zmq
+from .utilities import _verify_zmq, _ensure_utf8
 
 try:
 	import zmq
@@ -44,22 +44,23 @@ class ZmqPubController(object):
 	# A method for connecting to the specified PUB URI by sending the 'connect'
 	# message via the command control socket.
 	def connect(self, uri):
-		self._command_control_sock.send('\x00' + uri)
+		self._command_control_sock.send(_ensure_utf8('\x00') + uri)
 
 	# A method for disconnecting from the specified PUB URI by sending the
 	# 'disconnect' message via the command control socket.
 	def disconnect(self, uri):
-		self._command_control_sock.send('\x01' + uri)
+		self._command_control_sock.send(_ensure_utf8('\x01') + uri)
 
 	# A method for sending the specified data to the PUB socket by sending the
 	# 'publish' message via the command control socket.
 	def publish(self, channel, content):
-		self._command_control_sock.send('\x02' + channel + '\x00' + content)
+		self._command_control_sock.send(_ensure_utf8('\x02') + channel +
+				_ensure_utf8('\x00') + content)
 
 	# A method for stopping the monitoring done by this instance and closing
 	# all sockets by sending the 'stop' message via the command control socket.
 	def stop(self):
-		self._command_control_sock.send('\x03')
+		self._command_control_sock.send(_ensure_utf8('\x03'))
 
 	# This method is meant to run a separate thread and poll the ZMQ control
 	# socket for control messages and the pub socket for subscribe and

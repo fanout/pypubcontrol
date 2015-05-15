@@ -5,6 +5,9 @@
 #    :copyright: (c) 2015 by Fanout, Inc.
 #    :license: MIT, see LICENSE for more details.
 
+import sys
+import collections
+
 try:
 	import zmq
 except ImportError:
@@ -15,6 +18,8 @@ try:
 except ImportError:
 	tnetstring = None
 
+is_python3 = sys.version_info >= (3,)
+
 # An internal method to verify that the zmq and tnetstring packages are
 # available. If not an exception is raised.
 def _verify_zmq():
@@ -24,23 +29,37 @@ def _verify_zmq():
 		raise ValueError('tnetstring package must be installed')
 
 # An internal method for encoding the specified value as UTF8 only
-# if it is unicode.
+# if it is unicode. This method acts recursively and will process nested
+# lists and dicts.
 def _ensure_utf8(value):
-	try:
-		if isinstance(value, unicode):
-			return value.encode('utf-8')
-	except NameError:
+	if is_python3:
 		if isinstance(value, str):
 			return value.encode('utf-8')
+	else:
+		if isinstance(value, unicode):
+			return value.encode('utf-8')
+		elif isinstance(value, str):
+			return value
+	if isinstance(value, collections.Mapping):
+		return dict(map(_ensure_utf8, value.items()))
+	elif isinstance(value, collections.Iterable):
+		return type(value)(map(_ensure_utf8, value))
 	return value
 
 # An internal method for decoding the specified value as UTF8 only
-# if it is binary.
+# if it is binary. This method acts recursively and will process nested
+# lists and dicts.
 def _ensure_unicode(value):
-	try:
-		if not isinstance(value, unicode):
+	if is_python3:
+		if isinstance(value, bytes):
 			return value.decode('utf-8')
-	except NameError:
-		if not isinstance(value, str):
+		if isinstance(value, str):
+			return value
+	else:
+		if isinstance(value, str):
 			return value.decode('utf-8')
+	if isinstance(value, collections.Mapping):
+		return dict(map(_ensure_unicode, value.items()))
+	elif isinstance(value, collections.Iterable):
+		return type(value)(map(_ensure_unicode, value))
 	return value
