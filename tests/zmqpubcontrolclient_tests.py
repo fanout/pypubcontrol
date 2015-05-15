@@ -67,9 +67,14 @@ class ZmqPubControlClientTestClass(zmqpcc.ZmqPubControlClient):
 	def connect_zmq(self):
 		self.connect_called = True
 
+	def _verify_uri_config(self):
+		self.verify_uri_config_called = True
+
 	def _send_to_zmq(self, item, channel):
 		self.send_item = item
 		self.send_channel = channel
+		if hasattr(self, 'raise_during_send') and self.raise_during_send:
+			raise ValueError()		
 
 class ZmqPubControlClientTestClass2(zmqpcc.ZmqPubControlClient):
 	def _verify_not_closed(self):
@@ -123,6 +128,29 @@ class ZmqPubControlClientTestClass5(zmqpcc.ZmqPubControlClient):
 	def _get_command_host(self, uri):
 		self.command_uri = uri
 
+class ZmqPubControlClientTestClass6(zmqpcc.ZmqPubControlClient):
+	def _verify_not_closed(self):
+		self.verify_not_closed_called = True
+
+	def _discover_uris(self):
+		self.discover_called = True
+
+	def connect_zmq(self):
+		self.connect_called = True
+
+	def _verify_uri_config(self):
+		self.verify_uri_config_called = True
+
+	def _send_to_zmq(self, item, channel):
+		self.send_item = item
+		self.send_channel = channel
+
+	def _publish(self, channel, item, blocking, callback):
+		self.publish_channel = channel
+		self.publish_item = item
+		self.publish_blocking = blocking
+		self.publish_callback = callback
+
 class ZmqContextTestClass():
 	def socket(self, socket_type):
 		self.socket_type = socket_type
@@ -173,6 +201,8 @@ class TestZmqPubControlClient(unittest.TestCase):
 		self.assertEquals(client.uri, 'uri')
 		self.assertEquals(client.pub_uri, None)
 		self.assertEquals(client.push_uri, None)
+		self.assertNotEqual(client._lock, None)
+		self.assertNotEqual(client._thread_cond, None)
 		self.assertEquals(client._push_sock, None)
 		self.assertEquals(client._require_subscribers, False)
 		self.assertEquals(client._disable_pub, False)
@@ -181,10 +211,11 @@ class TestZmqPubControlClient(unittest.TestCase):
 		self.assertEquals(client._pub_controller, None)
 		self.assertFalse(client._discovery_completed)
 		self.assertFalse(client.closed)
-		self.assertTrue(client.discover_called)
 		self.assertFalse(hasattr(client, 'connect_called'))
 		self.assertTrue(client in zmqpcc._zmqpubcontrolclients)
 		self.assertTrue(self.verify_zmq_called)
+		time.sleep(0.5)
+		self.assertTrue(client.discover_called)
 		client = ZmqPubControlClientTestClass(None, 'push_uri',
 				'pub_uri', True, True, 'callback', 'context')
 		self.assertEquals(client.uri, None)
@@ -196,41 +227,62 @@ class TestZmqPubControlClient(unittest.TestCase):
 		self.assertEquals(client._sub_callback, 'callback')
 		self.assertEquals(client._context, 'context')
 		self.assertEquals(client._pub_controller, None)
-		self.assertFalse(client._discovery_completed)
 		self.assertTrue(client in zmqpcc._zmqpubcontrolclients)
 		self.assertFalse(client.closed)
 		self.assertTrue(client.discover_called)
 		self.assertTrue(client.connect_called)
 		self.assertTrue(self.verify_zmq_called)
+		time.sleep(0.5)
+		self.assertTrue(client.discover_called)
 
 	def callback(self, result, message):
 		self.callback_result = result
 		self.callback_message = message
 
 	def test_publish(self):
+		client = ZmqPubControlClientTestClass6('uri', 'push_uri',
+				'pub_uri', True, True, 'callback', 'context')
+		client.publish('chan', 'item', True, 'callback')
+		self.assertEquals(client.publish_channel, 'chan')
+		self.assertEquals(client.publish_item, 'item')
+		self.assertEquals(client.publish_blocking, True)
+		self.assertEquals(client.publish_callback, 'callback')
+		client = ZmqPubControlClientTestClass6('uri', 'push_uri',
+				'pub_uri', True, True, 'callback', 'context')
+		client.publish('chan', 'item', False, 'callback')
+		time.sleep(0.5)
+		self.assertEquals(client.publish_channel, 'chan')
+		self.assertEquals(client.publish_item, 'item')
+		self.assertEquals(client.publish_blocking, False)
+		self.assertEquals(client.publish_callback, 'callback')
+
+	def test_publish_internal(self):
 		client = ZmqPubControlClientTestClass('uri', 'push_uri',
 				'pub_uri', True, True, 'callback', 'context')
-		client.connect_called = False
-		client.publish('channel', Item(TestFormatSubClass()), True)
-		self.assertTrue(client.connect_called)
-		self.assertTrue(client.verify_not_closed_called)
+		client.discover_called = False
+		client._publish('channel', Item(TestFormatSubClass()), True, None)
+		self.assertTrue(client.discover_called)		
+		self.assertTrue(client.verify_uri_config_called)
 		self.assertFalse(hasattr(client, 'send_item'))
 		client = ZmqPubControlClientTestClass('uri', 'push_uri',
 				'pub_uri', True, True, 'callback', 'context')
-		client.connect_called = False
-		client.publish('channel', Item(TestFormatSubClass()), False,
+		client.discover_called = False
+		client._publish('channel', Item(TestFormatSubClass()), False,
 				self.callback)
 		self.assertFalse(hasattr(client, 'send_item'))
-		self.assertTrue(client.connect_called)
-		self.assertTrue(client.verify_not_closed_called)
+		self.assertTrue(client.discover_called)
+		self.assertTrue(client.verify_uri_config_called)
 		self.assertEquals(self.callback_result, True)
 		self.assertEquals(self.callback_message, '')
+		self.callback_result = None
+		self.callback_message = None
 		client = ZmqPubControlClientTestClass('uri', 'push_uri',
 				'pub_uri', True, True, 'callback', 'context')
+		client.discover_called = False
 		client._push_sock = ZmqSocketTestClass()
-		client.publish('channel', Item(TestFormatSubClass()), False,
+		client._publish('channel', Item(TestFormatSubClass()), False,
 				self.callback)
-		self.assertTrue(client.connect_called)
+		self.assertTrue(client.discover_called)
 		is_encoded = False
 		try:
 			if not isinstance(client.send_channel, unicode):
@@ -244,6 +296,37 @@ class TestZmqPubControlClient(unittest.TestCase):
 				Item(TestFormatSubClass()).export(True, True))
 		self.assertEquals(self.callback_result, True)
 		self.assertEquals(self.callback_message, '')
+		self.callback_result = None
+		self.callback_message = None
+		client = ZmqPubControlClientTestClass('uri', 'push_uri',
+				'pub_uri', True, True, 'callback', 'context')
+		client.raise_during_send = True
+		client.discover_called = False
+		client._push_sock = ZmqSocketTestClass()
+		client._publish('channel', Item(TestFormatSubClass()), False,
+				self.callback)
+		self.assertTrue(client.discover_called)
+		is_encoded = False
+		try:
+			if not isinstance(client.send_channel, unicode):
+				is_encoded = True
+		except NameError:
+			if not isinstance(client.send_channel, str):
+				is_encoded = True
+		self.assertEqual(client.send_channel, 'channel'.encode('utf-8'))
+		self.assertTrue(is_encoded)
+		self.assertEquals(client.send_item,
+				Item(TestFormatSubClass()).export(True, True))
+		self.assertEquals(self.callback_result, False)
+		self.assertNotEqual(self.callback_message, '')
+		client = ZmqPubControlClientTestClass('uri', 'push_uri',
+				'pub_uri', True, True, 'callback', 'context')
+		client.raise_during_send = True
+		client.discover_called = False
+		client._push_sock = ZmqSocketTestClass()
+		with self.assertRaises(ValueError):
+			client._publish('channel', Item(TestFormatSubClass()), True,
+					self.callback)
 
 	def test_close(self):
 		client = ZmqPubControlClientTestClass('uri')
@@ -415,6 +498,14 @@ class TestZmqPubControlClient(unittest.TestCase):
 		client._context = ZmqContextTestClass()
 		pollin_response = 0
 		pollout_response = 1
+		client._discover_uris_async()
+		client = ZmqPubControlClientTestClass4('tcp://localhost:5563',
+				'push_uri', 'pub_uri')
+		client.pub_uri = None
+		client.push_uri = None
+		client._context = ZmqContextTestClass()
+		pollin_response = 0
+		pollout_response = 1
 		with self.assertRaises(ValueError):
 			client._discover_uris()
 		self.assertFalse(client._discovery_completed)
@@ -460,6 +551,29 @@ class TestZmqPubControlClient(unittest.TestCase):
 			client._discover_uris()
 		self.assertTrue(client._context.last_socket_created.closed)
 
+	def test_end_discovery(self):
+		client = ZmqPubControlClientTestClass4('tcp://localhost:5563',
+				'push_uri', 'pub_uri')
+		client._discovery_completed = False
+		client._end_discovery(True)
+		self.assertTrue(client._discovery_completed)
+		self.assertTrue(client.connect_called)
+		client = ZmqPubControlClientTestClass4('tcp://localhost:5563',
+				'push_uri', 'pub_uri')
+		client._discovery_completed = False
+		client.connect_called = False
+		client._end_discovery(False)
+		self.assertFalse(client._discovery_completed)
+		self.assertFalse(client.connect_called)
+
+	def test_cleanup_discovery(self):
+		client = ZmqPubControlClientTestClass4('tcp://localhost:5563',
+				'push_uri', 'pub_uri')
+		client._thread_cond.acquire()
+		client._discovery_in_progress = True
+		client._cleanup_discovery()
+		self.assertFalse(client._discovery_in_progress)
+
 	def test_set_discovered_uris(self):
 		client = ZmqPubControlClientTestClass5('uri',
 				'push_uri', 'pub_uri')
@@ -475,11 +589,40 @@ class TestZmqPubControlClient(unittest.TestCase):
 		self.assertEqual(client.push_uri, 'push'.encode('utf-8'))
 		self.assertEqual(client.pub_uri, 'pub'.encode('utf-8'))
 		self.assertEquals(client.command_uri, 'uri')
+
+	def test_verify_discovered_uris(self):
+		client = ZmqPubControlClientTestClass5('uri',
+				'push_uri', 'pub_uri')
+		client.push_uri = 'push'
+		client.pub_uri = 'pub'
+		client._verify_discovered_uris()
+		client.push_uri = None
+		client.pub_uri = 'pub'
+		client._verify_discovered_uris()
+		client.push_uri = 'push'
+		client.pub_uri = None
+		client._verify_discovered_uris()
 		client.push_uri = None
 		client.pub_uri = None
-		result = {}
 		with self.assertRaises(ValueError):
-			client._set_discovered_uris(result)
+			client._verify_discovered_uris()
+
+	def test_discovery_required_for_pub(self):
+		client = ZmqPubControlClientTestClass4('uri',
+				'push_uri', 'pub_uri')
+		client.pub_uri = None
+		client._require_subscribers = True
+		client._discovery_completed = False
+		self.assertTrue(client._discovery_required_for_pub())
+		client.pub_uri = 'pub'
+		self.assertFalse(client._discovery_required_for_pub())
+		client.pub_uri = None
+		client._require_subscribers = False
+		self.assertFalse(client._discovery_required_for_pub())
+		client._require_subscribers = True
+		client._discovery_completed = True
+		self.assertFalse(client._discovery_required_for_pub())
+
 
 	def test_get_command_host(self):
 		client = ZmqPubControlClientTestClass4('uri',
