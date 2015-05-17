@@ -300,9 +300,11 @@ class TestPubControl(unittest.TestCase):
 		pc._disconnect_zmq_pub_uri('uri')
 		pc._zmq_pub_controller = ZmqPubControllerTestClass()
 		pc._connect_zmq_pub_uri('connect')
-		self.assertEqual(pc._zmq_pub_controller.connect_uri, 'connect')
+		self.assertEqual(pc._zmq_pub_controller.connect_uri,
+                'connect'.encode('utf-8'))
 		pc._disconnect_zmq_pub_uri('disconnect')
-		self.assertEqual(pc._zmq_pub_controller.disconnect_uri, 'disconnect')
+		self.assertEqual(pc._zmq_pub_controller.disconnect_uri,
+                'disconnect'.encode('utf-8'))
 
 if __name__ == '__main__':
 		unittest.main()

@@ -370,7 +370,8 @@ class TestZmqPubControlClient(unittest.TestCase):
 		client.connect_zmq()
 		self.assertEquals(client._pub_controller.callback, 'callback')
 		self.assertEquals(client._pub_controller.context, client._context)
-		self.assertEquals(client._pub_controller.connect_uri, 'pub_uri')
+		self.assertEquals(client._pub_controller.connect_uri,
+                'pub_uri'.encode('utf-8'))
 
 	def test_verify_uri_config(self):
 		client = ZmqPubControlClientTestClass3('uri')
@@ -469,12 +470,12 @@ class TestZmqPubControlClient(unittest.TestCase):
 		self.assertEquals(client._context.last_socket_created.send_data,
 				tnetstring.dumps({'method'.encode('utf-8'):
 				'get-zmq-uris'.encode('utf-8')}))
-		self.assertEquals(client.resolve_uris[0], 'publish-pull'.encode('utf-8'))
-		self.assertEquals(client.resolve_uris[1], 'publish-sub'.encode('utf-8'))
+		self.assertEquals(client.resolve_uris[0], 'publish-pull')
+		self.assertEquals(client.resolve_uris[1], 'publish-sub')
 		self.assertEquals(client.resolve_hosts[0], 'localhost')
 		self.assertEquals(client.resolve_hosts[1], 'localhost')
-		self.assertEquals(client.push_uri, 'publish-pull'.encode('utf-8'))
-		self.assertEquals(client.pub_uri, 'publish-sub'.encode('utf-8'))
+		self.assertEquals(client.push_uri, 'publish-pull')
+		self.assertEquals(client.pub_uri, 'publish-sub')
 		client = ZmqPubControlClientTestClass4('tcp://localhost:5563',
 				'push_uri', 'pub_uri')
 		client.pub_uri = None
@@ -525,8 +526,8 @@ class TestZmqPubControlClient(unittest.TestCase):
 		self.assertEquals(client._context.last_socket_created.
 				connect_uri, 'uri')
 		self.assertTrue(client._context.last_socket_created.closed)
-		self.assertEquals(client.resolve_uris[0], 'publish-pull'.encode('utf-8'))
-		self.assertEquals(client.resolve_uris[1], 'publish-sub'.encode('utf-8'))
+		self.assertEquals(client.resolve_uris[0], 'publish-pull')
+		self.assertEquals(client.resolve_uris[1], 'publish-sub')
 		self.assertEquals(client.resolve_hosts[0], None)
 		self.assertEquals(client.resolve_hosts[1], None)
 		client = ZmqPubControlClientTestClass4('tcp://localhost:5563',
@@ -585,8 +586,8 @@ class TestZmqPubControlClient(unittest.TestCase):
 		client.push_uri = None
 		client.pub_uri = None
 		client._set_discovered_uris(result)
-		self.assertEqual(client.push_uri, 'push'.encode('utf-8'))
-		self.assertEqual(client.pub_uri, 'pub'.encode('utf-8'))
+		self.assertEqual(client.push_uri, 'push')
+		self.assertEqual(client.pub_uri, 'pub')
 		self.assertEquals(client.command_uri, 'uri')
 
 	def test_verify_discovered_uris(self):
