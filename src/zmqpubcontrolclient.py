@@ -8,7 +8,7 @@
 import threading
 import atexit
 import timeit
-from .utilities import _ensure_utf8, _verify_zmq
+from .utilities import _ensure_utf8, _ensure_unicode, _verify_zmq
 from .zmqpubcontroller import ZmqPubController
 
 try:
@@ -274,11 +274,13 @@ class ZmqPubControlClient(object):
 		if (self.push_uri is None and
 				_ensure_utf8('publish-pull') in discovery_result):
 			self.push_uri = self._resolve_uri(
-					discovery_result[_ensure_utf8('publish-pull')], command_host)
+					_ensure_unicode(discovery_result[_ensure_utf8('publish-pull')]),
+					command_host)
 		if (self.pub_uri is None and
 					_ensure_utf8('publish-sub') in discovery_result):
 			self.pub_uri = self._resolve_uri(
-					discovery_result[_ensure_utf8('publish-sub')], command_host)
+					_ensure_unicode(discovery_result[_ensure_utf8('publish-sub')]),
+					command_host)
 
 	# An internal method for verifying the discovered URIs. If neither the
 	# PUSH or PUB URI was discovered then an exception is raised.
