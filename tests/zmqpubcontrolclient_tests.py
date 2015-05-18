@@ -617,22 +617,6 @@ class TestZmqPubControlClient(unittest.TestCase):
 		with self.assertRaises(ValueError):
 			client._verify_discovered_uris()
 
-	def test_discovery_required_for_pub(self):
-		client = ZmqPubControlClientTestClass4('uri',
-				'push_uri', 'pub_uri')
-		client.pub_uri = None
-		client._require_subscribers = True
-		client._discovery_completed = False
-		self.assertTrue(client._discovery_required_for_pub())
-		client.pub_uri = 'pub'
-		self.assertFalse(client._discovery_required_for_pub())
-		client.pub_uri = None
-		client._require_subscribers = False
-		self.assertFalse(client._discovery_required_for_pub())
-		client._require_subscribers = True
-		client._discovery_completed = True
-		self.assertFalse(client._discovery_required_for_pub())
-
 	def test_get_command_host(self):
 		client = ZmqPubControlClientTestClass4('uri',
 				'push_uri', 'pub_uri')
@@ -649,21 +633,6 @@ class TestZmqPubControlClient(unittest.TestCase):
 				'host'), 'tcp://host:5000')
 		self.assertEquals(client._resolve_uri('tcp://*:5000',
 				None), 'tcp://localhost:5000')
-
-	def test_discovery_required_for_pub(self):
-		client = ZmqPubControlClientTestClass('uri')
-		client.pub_uri = None
-		client._require_subscribers = True
-		client._discovery_completed = False
-		self.assertTrue(client._discovery_required_for_pub())
-		client.pub_uri = 'uri'
-		self.assertFalse(client._discovery_required_for_pub())
-		client.pub_uri = None
-		client._require_subscribers = False
-		self.assertFalse(client._discovery_required_for_pub())
-		client._require_subscribers = True
-		client._discovery_completed = True
-		self.assertFalse(client._discovery_required_for_pub())
 
 if __name__ == '__main__':
 		unittest.main()

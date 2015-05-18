@@ -134,13 +134,7 @@ class PubControl(object):
 				cb = PubControlClientCallbackHandler(len(self.clients),
 						callback).handler
 		for client in self.clients:
-			need_zmq_pub_discovery = False
-			if (hasattr(client, '_discovery_required_for_pub') and
-					client._discovery_required_for_pub()):
-				need_zmq_pub_discovery = True
 			client.publish(channel, item, blocking=blocking, callback=cb)
-			if (need_zmq_pub_discovery and not client._discovery_required_for_pub()):
-				self._connect_zmq_pub_uri(client.pub_uri)
 		self._send_to_zmq(channel, item)
 
 	# The close method is a blocking call that closes all ZMQ sockets and

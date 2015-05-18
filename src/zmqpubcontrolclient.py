@@ -323,9 +323,3 @@ class ZmqPubControlClient(object):
 				else:
 					return uri[0:6] + 'localhost' + uri[at:]
 		return uri
-
-	# An internal method for determining whether discovery is still required
-	# for the PUB socket.
-	def _discovery_required_for_pub(self):
-		return (self.pub_uri is None and self._require_subscribers and
-				not self._discovery_completed)
