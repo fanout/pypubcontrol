@@ -63,11 +63,11 @@ class PubControl(object):
 		self._zmq_pub_controller = None
 		self.clients = list()
 		self.closed = False
-		if config:
-			self.apply_config(config)
 		self._zmq_ctx = zmq_context
 		if zmq_context is None and zmq:
 			self._zmq_ctx = zmq.Context.instance()
+		if config:
+			self.apply_config(config)
 		_lock.acquire()
 		_pubcontrols.append(self)
 		_lock.release()
