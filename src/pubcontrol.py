@@ -74,8 +74,7 @@ class PubControl(object):
 	def remove_all_clients(self):
 		self._verify_not_closed()
 		for client in self.clients:
-			if hasattr(client, 'close'):
-				client.close()
+			client.close()
 		self.clients = list()
 
 	# Add the specified PubControlClient or ZmqPubControlClient instance to
@@ -174,8 +173,7 @@ class PubControl(object):
 	def wait_all_sent(self):
 		self._verify_not_closed()
 		for client in self.clients:
-			if hasattr(client, 'wait_all_sent'):
-				client.wait_all_sent()
+			client.wait_all_sent()
 
 	# DEPRECATED: The finish method is now deprecated in favor of the more
 	# descriptive wait_all_sent() method.

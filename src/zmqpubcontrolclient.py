@@ -140,6 +140,12 @@ class ZmqPubControlClient(object):
 				self._push_sock.linger = 0
 		self._lock.release()
 
+	# Placeholder for the wait_all_sent() method implemented into PubControlClient.
+	# This method currently has no implementation for ZmqPubControlClient and
+	# exists here to facilitate the management of clients by PubControl.
+	def wait_all_sent(self):
+		pass
+
 	# An internal method for publishing the specified item to the specified
 	# channel on the configured ZMQ endpoint. This method is meant to run
 	# either synchronously or asynchronously depending on whether the blocking
