@@ -54,27 +54,32 @@ class ZmqPubControlClient(object):
 	# attempting to publish on a PUB socket will result in an exception (this
 	# is done to facilitate PUB socket publishing from the PubControl class).
 	# Optionally specify a ZMQ context to use otherwise the global ZMQ context
-	# will be used.
+	# will be used. If a discovery callback is specified, then that callback
+	# will be executed with the PUSH / PUB URIs and require_subscribers setting
+	# when discovery successfully completes.
 	def __init__(self, uri, push_uri=None, pub_uri=None,
 			require_subscribers=False, disable_pub=False, sub_callback=None, 
-			context=None):
+			context=None, discovery_callback=None):
 		_verify_zmq()
 		self.uri = uri
 		self.pub_uri = pub_uri
 		self.push_uri = push_uri
+		self._require_subscribers = require_subscribers
+		self._sub_callback = sub_callback
+		if uri is None:
+			self._verify_uri_config()
 		self._context = context
 		self._discovery_completed = False
 		self._discovery_in_progress = False
 		if self._context is None:
 			self._context = zmq.Context.instance()
 		self.closed = False
-		self._require_subscribers = require_subscribers
 		self._disable_pub = disable_pub
-		self._sub_callback = sub_callback
 		self._thread_cond = threading.Condition()
 		self._lock = threading.Lock()
 		self._push_sock = None
 		self._pub_controller = None
+		self._discovery_callback = discovery_callback
 		if ((self.push_uri and not require_subscribers) or
 				(self.pub_uri and require_subscribers)):
 			self.connect_zmq()
@@ -244,11 +249,15 @@ class ZmqPubControlClient(object):
 
 	# An internal method for ending the discovery process by acquiring the
 	# threading condition, setting required booleans accordingly, and notifying
-	# all waiting threads. If the discovery succeeded then connect_zmq() is called.
+	# all waiting threads. If the discovery succeeded then the discovery callback
+	# is executed and connect_zmq() is called.
 	def _end_discovery(self, succeeded):
 		self._thread_cond.acquire()
 		if succeeded:
 			self._discovery_completed = True
+			if self._discovery_callback:
+				self._discovery_callback(self.push_uri, self.pub_uri,
+						self._require_subscribers)
 			try:
 				self.connect_zmq()
 			except:

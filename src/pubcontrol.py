@@ -96,7 +96,6 @@ class PubControl(object):
 		if not isinstance(config, list):
 			config = [config]
 		clients = list()
-		pub_uris_connected = list()
 		try:
 			for entry in config:
 				client = None
@@ -110,17 +109,13 @@ class PubControl(object):
 					require_subscribers = entry.get('require_subscribers', False)
 					client = ZmqPubControlClient(entry.get('zmq_uri'),
 							entry.get('zmq_push_uri'), entry.get('zmq_pub_uri'),
-							require_subscribers, True, None, self._zmq_ctx)
-					if client.pub_uri and require_subscribers:
-						self._connect_zmq_pub_uri(client.pub_uri)
-						pub_uris_connected.append(client.pub_uri)
+							require_subscribers, True, None, self._zmq_ctx,
+							self._discovery_callback)
 				if client:
 					clients.append(client)
 		except:
 			for client in clients:
 				client.close()
-			for uri in pub_uris_connected:
-				self._disconnect_zmq_pub_uri(uri)
 			raise
 		self.clients.extend(clients)
 
@@ -140,7 +135,7 @@ class PubControl(object):
 						callback).handler
 		for client in self.clients:
 			need_zmq_pub_discovery = False
-			if (hasattr(client, '_discovery_required_for_pub') and 
+			if (hasattr(client, '_discovery_required_for_pub') and
 					client._discovery_required_for_pub()):
 				need_zmq_pub_discovery = True
 			client.publish(channel, item, blocking=blocking, callback=cb)
@@ -180,6 +175,12 @@ class PubControl(object):
 	def finish(self):
 		self._verify_not_closed()
 		self.wait_all_sent()
+
+	# An internal method used as a callback for discovery within the ZMQ clients.
+	# If a PUB URI was discovered then it is connected to via the ZmqPubController.
+	def _discovery_callback(self, push_uri, pub_uri, require_subscribers):
+		if pub_uri and require_subscribers:
+			self._connect_zmq_pub_uri(pub_uri)
 
 	# An internal method for connecting to a ZMQ PUB URI. If necessary a
 	# ZmqPubController instance will be created. The ZmqPubController is

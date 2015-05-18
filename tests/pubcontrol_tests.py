@@ -72,7 +72,7 @@ class ZmqPubControlClientTestClass():
 class ZmqPubControlClientTestClass2():
 	def __init__(self, uri, push_uri=None, pub_uri=None,
 			require_subscribers=False, disable_pub=False, sub_callback=None, 
-			zmq_context=None):
+			zmq_context=None, discovery_callback=None):
 		self.uri = uri
 		self.push_uri = push_uri
 		self.pub_uri = pub_uri
@@ -80,6 +80,7 @@ class ZmqPubControlClientTestClass2():
 		self.disable_pub = disable_pub
 		self.sub_callback = sub_callback
 		self.zmq_context = zmq_context
+		self.discovery_callback = discovery_callback
 
 class ThreadTestClass():
 	def join(self):
@@ -225,9 +226,6 @@ class TestPubControl(unittest.TestCase):
 		self.assertEqual(pc.clients[7].require_subscribers, True)
 		self.assertEqual(pc.clients[7].sub_callback, None)
 		self.assertEqual(pc.clients[7].zmq_context, pc._zmq_ctx)
-		self.assertEqual(len(pc.connect_uris), 2)
-		self.assertEqual(pc.connect_uris[0], 'pub_uri')
-		self.assertEqual(pc.connect_uris[1], 'pub_uri3')
 
 	def test_publish_blocking(self):
 		pc = PubControlTestClass()
@@ -301,10 +299,19 @@ class TestPubControl(unittest.TestCase):
 		pc._zmq_pub_controller = ZmqPubControllerTestClass()
 		pc._connect_zmq_pub_uri('connect')
 		self.assertEqual(pc._zmq_pub_controller.connect_uri,
-                'connect'.encode('utf-8'))
+				'connect'.encode('utf-8'))
 		pc._disconnect_zmq_pub_uri('disconnect')
 		self.assertEqual(pc._zmq_pub_controller.disconnect_uri,
-                'disconnect'.encode('utf-8'))
+				'disconnect'.encode('utf-8'))
+
+	def test_discovery_callback(self):
+		pc = PubControlTestClass()
+		pc._discovery_callback('push', 'pub', True)
+		self.assertEqual(pc.connect_uris[0], 'pub')
+		pc._discovery_callback('push', 'pub', False)
+		self.assertEqual(len(pc.connect_uris), 1)
+		pc._discovery_callback('push', None, True)
+		self.assertEqual(len(pc.connect_uris), 1)
 
 if __name__ == '__main__':
 		unittest.main()
