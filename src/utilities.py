@@ -58,6 +58,8 @@ def _ensure_unicode(value):
 	else:
 		if isinstance(value, str):
 			return value.decode('utf-8')
+		elif isinstance(value, unicode):
+			return value
 	if isinstance(value, collections.Mapping):
 		return dict(map(_ensure_unicode, value.items()))
 	elif isinstance(value, collections.Iterable):
