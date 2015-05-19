@@ -80,6 +80,7 @@ class ZmqPubControlClient(object):
 		self._push_sock = None
 		self._pub_controller = None
 		self._discovery_callback = discovery_callback
+		self._publish_threads = list()
 		if ((self.push_uri and not require_subscribers) or
 				(self.pub_uri and require_subscribers)):
 			self.connect_zmq()
@@ -106,23 +107,35 @@ class ZmqPubControlClient(object):
 				args=(channel, item, blocking, callback))
 			thread.daemon = True
 			thread.start()
+			self._lock.acquire()
+			self._publish_threads.append(thread)
+			_threads_to_remove = list()
+			for thread in self._publish_threads:
+				if not thread.is_alive():
+					_threads_to_remove.append(thread)
+			for thread in _threads_to_remove:
+				self._publish_threads.remove(thread)
+			self._lock.release()
 
 	# The close method is a blocking call that closes all ZMQ sockets prior
-	# to returning and allowing the consumer to proceed. Note that the
+	# to returning and allowing the consumer to proceed. This method also
+	# ensures that all asynchronous publishes are completed. Note that the
 	# ZmqPubControlClient instance cannot be used after calling this method.
 	def close(self):
-		self._lock.acquire()
 		self._verify_not_closed()
+		self._lock.acquire()
+		self.closed = True
+		for thread in self._publish_threads:
+			if thread.is_alive():
+				thread.join()
 		if self._pub_controller:
 			self._pub_controller.stop()
 			self._pub_controller._thread.join()
 			self._pub_controller = None
 		if self._push_sock:
 			self._push_sock.close()
-
 			self._push_sock = None
 		_zmqpubcontrolclients.remove(self)
-		self.closed = True
 		self._lock.release()
 
 	# A thread-safe method for connecting to the configured ZMQ endpoints.
