@@ -237,6 +237,7 @@ class ZmqPubControlClient(object):
 			self._end_discovery(False)
 			return
 		sock = self._context.socket(zmq.REQ)
+		sock.linger = 0
 		sock.connect(self.uri)
 		start = int(timeit.default_timer() * 1000)
 		if not sock.poll(3000, zmq.POLLOUT):
