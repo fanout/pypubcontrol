@@ -10,7 +10,7 @@ else:
 
 setup(
 	name='pubcontrol',
-	version='2.2.4',
+	version='2.2.5',
 	description='EPCP library',
 	author='Justin Karneges',
 	author_email='justin@affinix.com',
