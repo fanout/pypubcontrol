@@ -69,7 +69,17 @@ pub.add_client(pubclient)
 pub.publish('<channel>', Item(HttpResponseFormat('Test publish!')))
 pub.publish('<channel>', Item(HttpResponseFormat('Test async publish!')),
         blocking=False, callback=callback)
+```
 
-# Wait for all async publish calls to complete:
-pub.finish()
+ZMQ Publishing
+--------------
+
+PyPubControl now supports publishing to ZMQ sockets via the PubControl class or via using the ZmqPubControlClient class directly. Both XPUB and PUSH sockets are supported. XPUB sockets are only published to when the publishing channel has subscribers while PUSH sockets are always published to. To indicate that an XPUB socket should be used set require_subscribers=True.
+
+While you can explicitly specify the PUSH and XPUB socket URIs, the recommended approach is to use the command socket URI (available in the latest version of Pushpin) for automatically discovering both the PUSH and XPUB socket URIs. The command socket URI is at port 5563 and should be reachable via tcp://localhost:5563. To have PyPubControl use the command socket specify the URI in the PubControl config as shown in the snippet below or use the 'uri' constructor parameter when using ZmqPubControlClient directly. Automatic discovery of the PUSH and XPUB socket URIs will then occur asynchronously and should complete within a couple seconds.
+
+```python
+# Initialize PubControl with a ZMQ command URI and indicate that the XPUB socket 
+# should be used via the require_subscribers key:
+pub = PubControl({'zmq_uri': 'tcp://localhost:5563', 'require_subscribers': True)})
 ```
