@@ -6,15 +6,13 @@
 #    :license: MIT, see LICENSE for more details.
 
 import sys
-from datetime import datetime
-import calendar
-import copy
 import json
 from base64 import b64encode
 import threading
 from collections import deque
-import jwt
 import requests
+from .pubsubmonitor import PubSubMonitor 
+from .utilities import _gen_auth_jwt_header
 
 try:
 	import ndg.httpsclient
@@ -45,7 +43,8 @@ except AttributeError:
 class PubControlClient(object):
 
 	# Initialize this class with a URL representing the publishing endpoint.
-	def __init__(self, uri):
+	def __init__(self, uri, auth_jwt_claim=None,
+			auth_jwt_key=None, require_subscribers=False):
 		self.uri = uri
 		self.lock = threading.Lock()
 		self.thread = None
@@ -53,10 +52,11 @@ class PubControlClient(object):
 		self.req_queue = deque()
 		self.auth_basic_user = None
 		self.auth_basic_pass = None
-		self.auth_jwt_claim = None
-		self.auth_jwt_key = None
+		self.auth_jwt_claim = auth_jwt_claim
+		self.auth_jwt_key = auth_jwt_key
 		self.requests_session = requests.session()
-		self._sub_monitor = None
+		if require_subscribers:
+			self.sub_monitor = PubSubMonitor(uri, auth_jwt_claim, auth_jwt_key)
 
 	# Call this method and pass a username and password to use basic
 	# authentication with the configured endpoint.
@@ -127,12 +127,7 @@ class PubControlClient(object):
 		if self.auth_basic_user:
 			return 'Basic ' + str(b64encode(('%s:%s' % (self.auth_basic_user, self.auth_basic_pass)).encode('ascii')))
 		elif self.auth_jwt_claim:
-			if 'exp' not in self.auth_jwt_claim:
-				claim = copy.copy(self.auth_jwt_claim)
-				claim['exp'] = calendar.timegm(datetime.utcnow().utctimetuple()) + 3600
-			else:
-				claim = self.auth_jwt_claim
-			return 'Bearer ' + jwt.encode(claim, self.auth_jwt_key).decode('utf-8')
+			return _gen_auth_jwt_header(self.auth_jwt_claim, self.auth_jwt_key)
 		else:
 			return None
 

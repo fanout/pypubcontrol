@@ -184,8 +184,8 @@ class PubControl(object):
 	def _connect_zmq_pub_uri(self, uri):
 		self._lock.acquire()
 		if self._zmq_pub_controller is None:
-			self._zmq_pub_controller = ZmqPubController(self._sub_callback,
-					self._zmq_ctx)
+			self._zmq_pub_controller = ZmqPubController(
+                    self._pub_controller_callback, self._zmq_ctx)
 		self._zmq_pub_controller.connect(_ensure_utf8(uri))
 		self._lock.release()
 

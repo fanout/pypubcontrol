@@ -7,6 +7,10 @@
 
 import sys
 import collections
+import jwt
+import calendar
+import copy
+from datetime import datetime
 
 try:
 	import zmq
@@ -65,3 +69,13 @@ def _ensure_unicode(value):
 	elif isinstance(value, collections.Iterable):
 		return type(value)(map(_ensure_unicode, value))
 	return value
+
+# An internal method for generating a JWT authorization header based on
+# the specified claim and key.
+def _gen_auth_jwt_header(claim, key):
+	if 'exp' not in claim:
+		claim = copy.copy(claim)
+		claim['exp'] = calendar.timegm(datetime.utcnow().utctimetuple()) + 3600
+	else:
+		claim = claim
+	return 'Bearer ' + jwt.encode(claim, key).decode('utf-8')

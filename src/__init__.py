@@ -12,4 +12,4 @@ from .pubcontrolclient import PubControlClient
 from .zmqpubcontrolclient import ZmqPubControlClient
 from .pubcontrol import PubControl
 from .zmqpubcontroller import ZmqPubController
-
+from .pubsubmonitor import PubSubMonitor
