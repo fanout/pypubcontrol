@@ -11,7 +11,7 @@ from base64 import b64encode
 import threading
 from collections import deque
 import requests
-from .pubsubmonitor import PubSubMonitor 
+from .pubsubmonitor import PubSubMonitor
 from .utilities import _gen_auth_jwt_header
 
 try:
@@ -34,12 +34,15 @@ except NameError:
 except AttributeError:
 	pass
 
-# The PubControlClient class allows consumers to publish either synchronously 
+# The PubControlClient class allows consumers to publish either synchronously
 # or asynchronously to an endpoint of their choice. The consumer wraps a Format
 # class instance in an Item class instance and passes that to the publish
 # method. The async publish method has an optional callback parameter that
 # is called after the publishing is complete to notify the consumer of the
-# result.
+# result. Optionally provide JWT authentication claim and key information.
+# If require_subscribers is set to True then channel subscription monitoring
+# will be enabled and only channels that are subscribed to will be published
+# to.
 class PubControlClient(object):
 
 	# Initialize this class with a URL representing the publishing endpoint.
@@ -55,6 +58,7 @@ class PubControlClient(object):
 		self.auth_jwt_claim = auth_jwt_claim
 		self.auth_jwt_key = auth_jwt_key
 		self.requests_session = requests.session()
+		self.sub_monitor = None
 		if require_subscribers:
 			self.sub_monitor = PubSubMonitor(uri, auth_jwt_claim, auth_jwt_key)
 
@@ -79,8 +83,11 @@ class PubControlClient(object):
 	# whether the the callback method should be blocking or non-blocking. The
 	# callback parameter is optional and will be passed the publishing results
 	# after publishing is complete. Note that the callback executes on a
-	# separate thread.
+	# separate thread. Note that if require_subscribers was set to True then
+	# the message will only be published if the channel is subscribed to.
 	def publish(self, channel, item, blocking=False, callback=None):
+		if self.sub_monitor and not self.sub_monitor.is_channel_subscribed_to(channel):
+			return
 		i = item.export()
 		i['channel'] = channel
 		if blocking:
@@ -98,7 +105,7 @@ class PubControlClient(object):
 			self._queue_req(('pub', uri, auth, i, callback))
 
 	# This method is a blocking method that ensures that all asynchronous
-	# publishing is complete prior to returning and allowing the consumer to 
+	# publishing is complete prior to returning and allowing the consumer to
 	# proceed.
 	def wait_all_sent(self):
 		self.lock.acquire()
@@ -142,7 +149,7 @@ class PubControlClient(object):
 			self.thread.daemon = True
 			self.thread.start()
 
-	# An internal method for adding an asynchronous publish request to the 
+	# An internal method for adding an asynchronous publish request to the
 	# publishing queue. This method will also activate the pubworker worker
 	# thread to make sure that it process any and all requests added to
 	# the queue.
@@ -173,7 +180,7 @@ class PubControlClient(object):
 		except NameError:
 			if isinstance(content_raw, str):
 				content_raw = content_raw.encode('utf-8')
-			
+
 		try:
 			self._make_http_request(uri, content_raw, headers)
 		except Exception as e:

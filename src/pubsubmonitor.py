@@ -8,6 +8,8 @@
 import sys
 import requests
 import threading
+import json
+import urllib
 from .utilities import _gen_auth_jwt_header
 
 try:
@@ -31,28 +33,66 @@ except AttributeError:
 	pass
 
 class PubSubMonitor(object):
-	def __init__(self, base_uri, auth_jwt_claim=None, auth_jwt_key=None):
-		if base_uri[-1:] != '/':
-			base_uri += '/'
-		self._uri = base_uri + 'subscriptions/stream/'
+	def __init__(self, base_stream_uri, auth_jwt_claim=None, auth_jwt_key=None):
+		if base_stream_uri[-1:] != '/':
+			base_stream_uri += '/'
+		self._stream_uri = base_stream_uri + 'subscriptions/stream/'
+		self._items_uri = base_stream_uri + 'subscriptions/items/'
 		if auth_jwt_claim:
 			self._headers = dict()
 			self._headers['Authorization'] = _gen_auth_jwt_header(
 					auth_jwt_claim, auth_jwt_key)
+		self._requests_session = requests.session()
+		self._channels = []
 		self._thread = threading.Thread(target=self._start_monitoring)
 		self._thread.daemon = True
 		self._thread.start()
 
+	def is_channel_subscribed_to(self, channel):
+		if channel in self._channels:
+			return True
+		return False
+
 	def _start_monitoring(self):
-		self._requests_session = requests.session()
 		if sys.version_info >= (2, 7, 9) or (ndg and ndg.httpsclient):
-			res = self._requests_session.get(self._uri, headers=self._headers,
-					stream=True)
+			self._stream_response = self._requests_session.get(self._stream_uri,
+					headers=self._headers, stream=True)
 		else:
-			res = self._requests_session.get(self._uri, headers=self._headers,
-					verify=False, stream=True)
-		for line in res.iter_lines(chunk_size=1):
-			print line
-			if line:
-				print(line)
-		print 'finished'
+			self._stream_response = self._requests_session.get(self._stream_uri,
+					headers=self._headers, verify=False, stream=True)
+		self._get_subscribers()
+		self._monitor()
+
+	def _monitor(self):
+		for line in self._stream_response.iter_lines(chunk_size=1):
+			content = json.loads(line)
+			if 'item' in content:
+				self._parse_items([content['item']])
+
+	def _get_subscribers(self):
+		items = []
+		last_cursor = ''
+		continue_retrieval = True
+		while continue_retrieval:
+			uri = self._items_uri
+			if last_cursor:
+				 uri += "?" + urllib.urlencode({'since': 'cursor:' + last_cursor})
+			res = self._requests_session.get(uri, headers=self._headers)
+			content = json.loads(res.content)
+			last_cursor = content['last_cursor']
+			if not content['items']:
+				continue_retrieval = False
+			else:
+				items.extend(content['items'])
+		self._parse_items(items)
+
+	def _parse_items(self, items):
+		for item in items:
+			if (item['state'] == 'subscribed' and
+					item['channel'] not in self._channels):
+				self._channels.append(item['channel'])
+				print('added ' + item['channel'])
+			elif (item['state'] == 'unsubscribed' and
+					item['channel'] in self._channels):
+				self._channels.remove(item['channel'])
+				print('removed ' + item['channel'])
