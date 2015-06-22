@@ -83,10 +83,14 @@ class PubControlClient(object):
 	# whether the the callback method should be blocking or non-blocking. The
 	# callback parameter is optional and will be passed the publishing results
 	# after publishing is complete. Note that the callback executes on a
-	# separate thread. Note that if require_subscribers was set to True then
-	# the message will only be published if the channel is subscribed to.
+	# separate thread. If require_subscribers was set to True then the message
+	# will only be published if the channel is subscribed to. If the sub_monitor
+	# instance failed to retrieve subscriber information then an error will be
+	# raised.
 	def publish(self, channel, item, blocking=False, callback=None):
-		if self.sub_monitor and not self.sub_monitor.is_channel_subscribed_to(channel):
+		if self.sub_monitor and self.sub_monitor._disabled:
+			raise ValueError('failed to retrieve channel subscribers')
+		elif self.sub_monitor and not self.sub_monitor.is_channel_subscribed_to(channel):
 			return
 		i = item.export()
 		i['channel'] = channel

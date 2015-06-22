@@ -32,6 +32,7 @@ except NameError:
 except AttributeError:
 	pass
 
+# TODO: Kill thread when PubControlClient is closed.
 class PubSubMonitor(object):
 	def __init__(self, base_stream_uri, auth_jwt_claim=None, auth_jwt_key=None):
 		if base_stream_uri[-1:] != '/':
@@ -44,6 +45,7 @@ class PubSubMonitor(object):
 					auth_jwt_claim, auth_jwt_key)
 		self._requests_session = requests.session()
 		self._channels = []
+		self._disabled = False
 		self._thread = threading.Thread(target=self._start_monitoring)
 		self._thread.daemon = True
 		self._thread.start()
@@ -54,20 +56,38 @@ class PubSubMonitor(object):
 		return False
 
 	def _start_monitoring(self):
-		if sys.version_info >= (2, 7, 9) or (ndg and ndg.httpsclient):
-			self._stream_response = self._requests_session.get(self._stream_uri,
-					headers=self._headers, stream=True)
-		else:
-			self._stream_response = self._requests_session.get(self._stream_uri,
-					headers=self._headers, verify=False, stream=True)
-		self._get_subscribers()
-		self._monitor()
+		continue_monitoring = True
+		while continue_monitoring:
+			retry_connection = True
+			while retry_connection:
+				try:
+					self._channels = []
+					if sys.version_info >= (2, 7, 9) or (ndg and ndg.httpsclient):
+						self._stream_response = self._requests_session.get(self._stream_uri,
+								headers=self._headers, stream=True)
+					else:
+						self._stream_response = self._requests_session.get(self._stream_uri,
+								headers=self._headers, verify=False, stream=True)
+					if (self._stream_response.status_code >= 200 &&
+							self._stream_response.status_code < 300):
+						pass
+					elif (self._stream_response.status_code < 500 ||
+							self._stream_response.status_code == 501 ||
+							self._stream_response.status_code >= 600):
+						self._disabled = True
+						return
+				except (socket.timeout, requests.exceptions.ConnectionError):
+					pass
+			self._get_subscribers()
+			self._monitor()
 
 	def _monitor(self):
+		# TODO: Check for sequencing.
 		for line in self._stream_response.iter_lines(chunk_size=1):
 			content = json.loads(line)
 			if 'item' in content:
 				self._parse_items([content['item']])
+		print('finished monitor')
 
 	def _get_subscribers(self):
 		items = []
@@ -77,7 +97,11 @@ class PubSubMonitor(object):
 			uri = self._items_uri
 			if last_cursor:
 				 uri += "?" + urllib.urlencode({'since': 'cursor:' + last_cursor})
-			res = self._requests_session.get(uri, headers=self._headers)
+			if sys.version_info >= (2, 7, 9) or (ndg and ndg.httpsclient):
+				res = self._requests_session.get(uri, headers=self._headers)
+			else:
+				res = self._requests_session.get(uri, headers=self._headers, verify=False)
+			print res.content
 			content = json.loads(res.content)
 			last_cursor = content['last_cursor']
 			if not content['items']:
