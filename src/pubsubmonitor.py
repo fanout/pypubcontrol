@@ -10,6 +10,8 @@ import requests
 import threading
 import json
 import urllib
+import time
+import socket
 from .utilities import _gen_auth_jwt_header
 
 try:
@@ -58,35 +60,53 @@ class PubSubMonitor(object):
 	def _start_monitoring(self):
 		continue_monitoring = True
 		while continue_monitoring:
+			self._channels = []
+			wait_interval = 0
 			retry_connection = True
 			while retry_connection:
+				time.sleep(wait_interval)
+				wait_interval = PubSubMonitor._increase_wait_interval(wait_interval)
 				try:
-					self._channels = []
 					if sys.version_info >= (2, 7, 9) or (ndg and ndg.httpsclient):
 						self._stream_response = self._requests_session.get(self._stream_uri,
 								headers=self._headers, stream=True)
 					else:
 						self._stream_response = self._requests_session.get(self._stream_uri,
 								headers=self._headers, verify=False, stream=True)
-					if (self._stream_response.status_code >= 200 &&
+					if (self._stream_response.status_code >= 200 and
 							self._stream_response.status_code < 300):
-						pass
-					elif (self._stream_response.status_code < 500 ||
-							self._stream_response.status_code == 501 ||
+						retry_connection = False
+					elif (self._stream_response.status_code < 500 or
+							self._stream_response.status_code == 501 or
 							self._stream_response.status_code >= 600):
 						self._disabled = True
 						return
 				except (socket.timeout, requests.exceptions.ConnectionError):
 					pass
-			self._get_subscribers()
-			self._monitor()
+			cursor = self._get_subscribers()
+			if cursor:
+				self._monitor(cursor)
 
-	def _monitor(self):
-		# TODO: Check for sequencing.
+	def _monitor(self, cursor):
+		# TODO: Implement sequencing.
+		initial_sync = False
 		for line in self._stream_response.iter_lines(chunk_size=1):
-			content = json.loads(line)
-			if 'item' in content:
+			if line:
+				content = json.loads(line)
+				if not initial_sync:
+					print cursor + " : " + content['prev_cursor']
+					if content['prev_cursor'] == cursor:
+						initial_sync = True
+						print 'stream in sync'
+					else:
+						print 'skipping record'
+						continue
+				else:
+					if content['prev_cursor'] != cursor:
+						break
+				print content
 				self._parse_items([content['item']])
+				cursor = content['prev_cursor']
 		print('finished monitor')
 
 	def _get_subscribers(self):
@@ -97,18 +117,37 @@ class PubSubMonitor(object):
 			uri = self._items_uri
 			if last_cursor:
 				 uri += "?" + urllib.urlencode({'since': 'cursor:' + last_cursor})
-			if sys.version_info >= (2, 7, 9) or (ndg and ndg.httpsclient):
-				res = self._requests_session.get(uri, headers=self._headers)
-			else:
-				res = self._requests_session.get(uri, headers=self._headers, verify=False)
-			print res.content
+			wait_interval = 0
+			retry_connection = True
+			while retry_connection:
+				if wait_interval == 64:
+					return None
+				time.sleep(wait_interval)
+				wait_interval = PubSubMonitor._increase_wait_interval(wait_interval)
+				try:
+					if sys.version_info >= (2, 7, 9) or (ndg and ndg.httpsclient):
+						res = self._requests_session.get(uri, headers=self._headers)
+					else:
+						res = self._requests_session.get(uri, headers=self._headers, verify=False)
+					if (res.status_code >= 200 and
+							res.status_code < 300):
+						retry_connection = False
+					elif (res.status_code < 500 or
+							res.status_code == 501 or
+							res.status_code >= 600):
+						print res.status_code
+						return None
+				except (socket.timeout, requests.exceptions.ConnectionError):
+					pass
 			content = json.loads(res.content)
 			last_cursor = content['last_cursor']
+			print last_cursor
 			if not content['items']:
 				continue_retrieval = False
 			else:
 				items.extend(content['items'])
 		self._parse_items(items)
+		return last_cursor
 
 	def _parse_items(self, items):
 		for item in items:
@@ -120,3 +159,11 @@ class PubSubMonitor(object):
 					item['channel'] in self._channels):
 				self._channels.remove(item['channel'])
 				print('removed ' + item['channel'])
+
+	@staticmethod
+	def _increase_wait_interval(wait_interval):
+		if wait_interval <= 1:
+			return wait_interval + 1
+		elif wait_interval == 64:
+			return wait_interval
+		return wait_interval * 2

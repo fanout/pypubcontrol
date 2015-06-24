@@ -89,8 +89,13 @@ class PubControlClient(object):
 	# raised.
 	def publish(self, channel, item, blocking=False, callback=None):
 		if self.sub_monitor and self.sub_monitor._disabled:
-			raise ValueError('failed to retrieve channel subscribers')
+			if callback:
+				callback(True, '')
+			else:
+				raise ValueError('failed to retrieve channel subscribers')
 		elif self.sub_monitor and not self.sub_monitor.is_channel_subscribed_to(channel):
+			if callback:
+				callback(True, '')
 			return
 		i = item.export()
 		i['channel'] = channel
