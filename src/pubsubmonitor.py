@@ -100,7 +100,7 @@ class PubSubMonitor(object):
 					pass
 			if self. _try_get_subscribers():
 				self._monitor()
-		print 'pubsubmonitor thread ended'
+		print 'pubsubmonitor run thread ended'
 
 	def _monitor(self):
 		print 'monitoring stream'
@@ -110,7 +110,8 @@ class PubSubMonitor(object):
 				content = json.loads(line)
 				if last_cursor and content['prev_cursor'] != last_cursor:
 					print 'mismatch'
-					if not self. _try_get_subscribers(last_cursor):
+					last_cursor = None
+					if not self._try_get_subscribers(last_cursor):
 						break
 				else:
 					self._parse_items([content['item']])
