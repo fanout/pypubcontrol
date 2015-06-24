@@ -59,12 +59,14 @@ class PubControlClient(object):
 		self.auth_jwt_key = auth_jwt_key
 		self.requests_session = requests.session()
 		self.sub_monitor = None
+		self.closed = False
 		if require_subscribers:
 			self.sub_monitor = PubSubMonitor(uri, auth_jwt_claim, auth_jwt_key)
 
 	# Call this method and pass a username and password to use basic
 	# authentication with the configured endpoint.
 	def set_auth_basic(self, username, password):
+		self._verify_notclosed()
 		self.lock.acquire()
 		self.auth_basic_user = username
 		self.auth_basic_pass = password
@@ -73,6 +75,7 @@ class PubControlClient(object):
 	# Call this method and pass a claim and key to use JWT authentication
 	# with the configured endpoint.
 	def set_auth_jwt(self, claim, key):
+		self._verify_notclosed()
 		self.lock.acquire()
 		self.auth_jwt_claim = claim
 		self.auth_jwt_key = key
@@ -88,7 +91,8 @@ class PubControlClient(object):
 	# instance failed to retrieve subscriber information then an error will be
 	# raised.
 	def publish(self, channel, item, blocking=False, callback=None):
-		if self.sub_monitor and self.sub_monitor._disabled:
+		self._verify_notclosed()
+		if self.sub_monitor and self.sub_monitor.is_failed():
 			if callback:
 				callback(True, '')
 			else:
@@ -133,7 +137,19 @@ class PubControlClient(object):
 	# implemented when needed for future features. Currently this method
 	# is simply a passthrough to wait_all_sent().
 	def close(self):
+		self.lock.acquire()
+		self.closed = True
+		if self.sub_monitor:
+			self.sub_monitor.close()
+		self.lock.release()
 		self.wait_all_sent()
+
+	# An internal method for verifying that the PubControlClient instance
+	# has not been closed via the close() method. If it has then an error
+	# is raised.
+	def _verify_notclosed(self):
+		if self.closed:
+			raise ValueError('pubcontrolclient instance is closed')
 
 	# An internal method used to generate an authorization header. The
 	# authorization header is generated based on whether basic or JWT
