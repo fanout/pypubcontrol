@@ -63,15 +63,13 @@ class PubSubMonitor(object):
 		return found_channel
 
 	def close(self):
-		print 'closing stream response'
 		self._closed = True
-		if self._stream_response:
-			self._stream_response.close()
 
 	def is_failed(self):
 		return self._failed
 
 	def _run(self):
+		print 'trying to open stream'
 		while not self._closed:
 			self._lock.acquire()
 			self._channels = []
@@ -98,6 +96,7 @@ class PubSubMonitor(object):
 						return
 				except (socket.timeout, requests.exceptions.ConnectionError):
 					pass
+			print 'opened stream'
 			if self. _try_get_subscribers():
 				self._monitor()
 		print 'pubsubmonitor run thread ended'
@@ -106,6 +105,8 @@ class PubSubMonitor(object):
 		print 'monitoring stream'
 		last_cursor = None
 		for line in self._stream_response.iter_lines(chunk_size=1):
+			if self._closed:
+				break
 			if line:
 				content = json.loads(line)
 				if last_cursor and content['prev_cursor'] != last_cursor:
@@ -115,11 +116,11 @@ class PubSubMonitor(object):
 				else:
 					self._parse_items([content['item']])
 				last_cursor = content['cursor']
-		print 'no more stream lines to iterate'
+		print 'closing stream response'
 		self._stream_response.close()
 
 	def _try_get_subscribers(self, last_cursor=None):
-		print 'getting subscribers'
+		print 'trying to get subscriber item list'
 		items = []
 		more_items_available = True
 		while more_items_available:
@@ -154,6 +155,7 @@ class PubSubMonitor(object):
 				more_items_available = False
 			else:
 				items.extend(content['items'])
+		print 'got subscriber items list'
 		self._parse_items(items)
 		return True
 
