@@ -121,8 +121,8 @@ class PubSubMonitor(object):
 	def _try_get_subscribers(self, last_cursor=None):
 		print 'getting subscribers'
 		items = []
-		continue_retrieval = True
-		while continue_retrieval:
+		more_items_available = True
+		while more_items_available:
 			uri = self._items_uri
 			if last_cursor:
 				 uri += "?" + urllib.urlencode({'since': 'cursor:' + last_cursor})
@@ -151,7 +151,7 @@ class PubSubMonitor(object):
 			content = json.loads(res.content)
 			last_cursor = content['last_cursor']
 			if not content['items']:
-				continue_retrieval = False
+				more_items_available = False
 			else:
 				items.extend(content['items'])
 		self._parse_items(items)
