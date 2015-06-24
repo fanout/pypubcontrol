@@ -110,7 +110,6 @@ class PubSubMonitor(object):
 				content = json.loads(line)
 				if last_cursor and content['prev_cursor'] != last_cursor:
 					print 'mismatch'
-					last_cursor = None
 					if not self._try_get_subscribers(last_cursor):
 						break
 				else:
