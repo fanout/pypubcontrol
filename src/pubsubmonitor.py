@@ -50,9 +50,12 @@ class PubSubMonitor(object):
 		self._channels = []
 		self._failed = False
 		self._closed = False
-		self._thread = threading.Thread(target=self._run)
-		self._thread.daemon = True
-		self._thread.start()
+		self._get_subscribers_thread_result = False
+		self._get_subscribers_thread = None
+		self._thread_event = threading.Event()
+		self._stream_thread = threading.Thread(target=self._run_stream)
+		self._stream_thread.daemon = True
+		self._stream_thread.start()
 
 	def is_channel_subscribed_to(self, channel):
 		found_channel = False
@@ -68,7 +71,7 @@ class PubSubMonitor(object):
 	def is_failed(self):
 		return self._failed
 
-	def _run(self):
+	def _run_stream(self):
 		print 'trying to open stream'
 		while not self._closed:
 			self._lock.acquire()
@@ -81,11 +84,17 @@ class PubSubMonitor(object):
 				wait_interval = PubSubMonitor._increase_wait_interval(wait_interval)
 				try:
 					if sys.version_info >= (2, 7, 9) or (ndg and ndg.httpsclient):
-						self._stream_response = self._requests_session.get(self._stream_uri,
-								headers=self._headers, stream=True)
+						self._stream_response = self._requests_session.get(
+								self._stream_uri, headers=self._headers, stream=True,
+								timeout=5)
 					else:
-						self._stream_response = self._requests_session.get(self._stream_uri,
-								headers=self._headers, verify=False, stream=True)
+						self._stream_response = self._requests_session.get(
+								self._stream_uri, headers=self._headers, verify=False,
+								stream=True, timeout=5)
+					# No concern about a race condition here since there's 5 full
+					# seconds between the .get() method above returning and the
+					# timeout exception being thrown. The lines below are guaranteed
+					# to execute within 5 seconds.
 					if (self._stream_response.status_code >= 200 and
 							self._stream_response.status_code < 300):
 						retry_connection = False
@@ -94,70 +103,105 @@ class PubSubMonitor(object):
 							self._stream_response.status_code >= 600):
 						self._failed = True
 						return
-				except (socket.timeout, requests.exceptions.ConnectionError):
-					pass
-			print 'opened stream'
-			if self. _try_get_subscribers():
-				self._monitor()
+					else:
+						continue
+					print 'opened stream'
+					self._try_get_subscribers()
+				except (socket.timeout, requests.exceptions.RequestException):
+					continue
+				got_subscribers = False
+				while not self._closed:
+					try:
+						self._thread_event.wait()
+						if not got_subscribers and self._get_subscribers_thread_result:
+							got_subscribers = True
+					 	if not got_subscribers:
+							break
+						self._monitor()
+						break
+					except (socket.timeout, requests.exceptions.Timeout):
+						continue
+				print 'closing stream response'
+				self._stream_response.close()
 		print 'pubsubmonitor run thread ended'
 
 	def _monitor(self):
 		print 'monitoring stream'
 		last_cursor = None
 		for line in self._stream_response.iter_lines(chunk_size=1):
-			if self._closed:
-				break
 			if line:
 				content = json.loads(line)
 				if last_cursor and content['prev_cursor'] != last_cursor:
 					print 'mismatch'
-					if not self._try_get_subscribers(last_cursor):
+					got_subscribers = False
+					# TODO: Test that last_cursor is properly passed.
+					self._try_get_subscribers(last_cursor)
+					while not self._closed:
+						try:
+							self._thread_event.wait()
+							got_subscribers = self._get_subscribers_thread_result
+							break
+						except (socket.timeout, requests.exceptions.Timeout):
+							continue
+					if not got_subscribers:
 						break
 				else:
 					self._parse_items([content['item']])
 				last_cursor = content['cursor']
-		print 'closing stream response'
-		self._stream_response.close()
 
 	def _try_get_subscribers(self, last_cursor=None):
-		print 'trying to get subscriber item list'
-		items = []
-		more_items_available = True
-		while more_items_available:
-			uri = self._items_uri
-			if last_cursor:
-				 uri += "?" + urllib.urlencode({'since': 'cursor:' + last_cursor})
-			wait_interval = 0
-			retry_connection = True
-			while retry_connection:
-				if wait_interval == 64:
-					return False
-				time.sleep(wait_interval)
-				wait_interval = PubSubMonitor._increase_wait_interval(wait_interval)
-				try:
-					if sys.version_info >= (2, 7, 9) or (ndg and ndg.httpsclient):
-						res = self._requests_session.get(uri, headers=self._headers)
-					else:
-						res = self._requests_session.get(uri, headers=self._headers, verify=False)
-					if (res.status_code >= 200 and
-							res.status_code < 300):
-						retry_connection = False
-					elif (res.status_code < 500 or
-							res.status_code == 501 or
-							res.status_code >= 600):
-						print res.status_code
-						return False
-				except (socket.timeout, requests.exceptions.ConnectionError):
-					pass
-			content = json.loads(res.content)
-			last_cursor = content['last_cursor']
-			if not content['items']:
-				more_items_available = False
-			else:
-				items.extend(content['items'])
-		print 'got subscriber items list'
-		self._parse_items(items)
-		return True
+		self._thread_event.clear()
+		self._get_subscribers_thread_result = False
+		self._get_subscribers_thread = threading.Thread(
+				target=self._run_get_subscribers, args=(last_cursor,))
+		self._get_subscribers_thread.daemon = True
+		self._get_subscribers_thread.start()
+
+	def _run_get_subscribers(self, last_cursor=None):
+		try:
+			print 'trying to get subscriber item list'
+			items = []
+			more_items_available = True
+			while more_items_available:
+				uri = self._items_uri
+				if last_cursor:
+					 uri += "?" + urllib.urlencode({'since': 'cursor:' + last_cursor})
+				wait_interval = 0
+				retry_connection = True
+				while retry_connection:
+					if wait_interval == 64:
+						self._get_subscribers_thread_result = False
+						return
+					time.sleep(wait_interval)
+					wait_interval = PubSubMonitor._increase_wait_interval(wait_interval)
+					try:
+						if sys.version_info >= (2, 7, 9) or (ndg and ndg.httpsclient):
+							res = self._requests_session.get(uri, headers=self._headers,
+									timeout=30)
+						else:
+							res = self._requests_session.get(uri, headers=self._headers,
+									verify=False, timeout=30)
+						if (res.status_code >= 200 and
+								res.status_code < 300):
+							retry_connection = False
+						elif (res.status_code < 500 or
+								res.status_code == 501 or
+								res.status_code >= 600):
+							self._get_subscribers_thread_result = False
+							return
+					except (socket.timeout, requests.exceptions.RequestException):
+						pass
+				content = json.loads(res.content)
+				last_cursor = content['last_cursor']
+				if not content['items']:
+					more_items_available = False
+				else:
+					items.extend(content['items'])
+			print 'got subscriber items list'
+			self._parse_items(items)
+			self._get_subscribers_thread_result = True
+		finally:
+			self._thread_event.set()
 
 	def _parse_items(self, items):
 		self._lock.acquire()
