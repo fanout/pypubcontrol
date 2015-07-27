@@ -4,13 +4,13 @@ from setuptools import setup
 import sys
 
 if sys.version_info >= (3,):
-	install_requires = ['PyJWT>=0,<1','requests>=2,<3']
+	install_requires = ['PyJWT>=1,<2','requests>=2,<3']
 else:
-	install_requires = ['PyJWT>=0,<1','requests>=2,<3']
+	install_requires = ['PyJWT>=1,<2','requests>=2,<3']
 
 setup(
 	name='pubcontrol',
-	version='2.2.6',
+	version='2.2.7',
 	description='EPCP library',
 	author='Justin Karneges',
 	author_email='justin@affinix.com',
