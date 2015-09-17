@@ -12,7 +12,12 @@ import json
 import urllib
 import time
 import socket
-from .utilities import _gen_auth_jwt_header
+from .utilities import _gen_auth_jwt_header, _ensure_unicode
+
+try:
+	from http.client import IncompleteRead
+except:
+	from httplib import IncompleteRead
 
 try:
 	import ndg.httpsclient
@@ -72,7 +77,7 @@ class PubSubMonitor(object):
 		return self._failed
 
 	def _run_stream(self):
-		print 'trying to open stream'
+		print('trying to open stream')
 		while not self._closed:
 			self._lock.acquire()
 			self._channels = []
@@ -105,7 +110,7 @@ class PubSubMonitor(object):
 						return
 					else:
 						continue
-					print 'opened stream'
+					print('opened stream')
 					self._try_get_subscribers()
 				except (socket.timeout, requests.exceptions.RequestException):
 					continue
@@ -115,24 +120,24 @@ class PubSubMonitor(object):
 						self._thread_event.wait()
 						if not got_subscribers and self._get_subscribers_thread_result:
 							got_subscribers = True
-					 	if not got_subscribers:
+						if not got_subscribers:
 							break
 						self._monitor()
 						break
-					except (socket.timeout, requests.exceptions.Timeout):
+					except (socket.timeout, requests.exceptions.Timeout, IncompleteRead):
 						continue
-				print 'closing stream response'
+				print('closing stream response')
 				self._stream_response.close()
-		print 'pubsubmonitor run thread ended'
+		print('pubsubmonitor run thread ended')
 
 	def _monitor(self):
-		print 'monitoring stream'
+		print('monitoring stream')
 		last_cursor = None
 		for line in self._stream_response.iter_lines(chunk_size=1):
 			if line:
 				content = json.loads(line)
 				if last_cursor and content['prev_cursor'] != last_cursor:
-					print 'mismatch'
+					print('mismatch')
 					got_subscribers = False
 					# TODO: Test that last_cursor is properly passed.
 					self._try_get_subscribers(last_cursor)
@@ -159,13 +164,16 @@ class PubSubMonitor(object):
 
 	def _run_get_subscribers(self, last_cursor=None):
 		try:
-			print 'trying to get subscriber item list'
+			print('trying to get subscriber item list')
 			items = []
 			more_items_available = True
 			while more_items_available:
 				uri = self._items_uri
 				if last_cursor:
-					 uri += "?" + urllib.urlencode({'since': 'cursor:' + last_cursor})
+					try:
+						uri += "?" + urllib.urlencode({'since': 'cursor:' + last_cursor})
+					except AttributeError:
+						uri += "?" + urllib.parse.urlencode({'since': 'cursor:' + last_cursor})
 				wait_interval = 0
 				retry_connection = True
 				while retry_connection:
@@ -191,13 +199,13 @@ class PubSubMonitor(object):
 							return
 					except (socket.timeout, requests.exceptions.RequestException):
 						pass
-				content = json.loads(res.content)
+				content = json.loads(_ensure_unicode(res.content))
 				last_cursor = content['last_cursor']
 				if not content['items']:
 					more_items_available = False
 				else:
 					items.extend(content['items'])
-			print 'got subscriber items list'
+			print('got subscriber items list')
 			self._parse_items(items)
 			self._get_subscribers_thread_result = True
 		finally:
