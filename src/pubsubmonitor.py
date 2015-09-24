@@ -82,7 +82,7 @@ class PubSubMonitor(object):
 			self._lock.acquire()
 			self._channels = []
 			self._lock.release()
-			self._last_cursor_from_get_subscribers = None
+			self._last_cursor = None
 			wait_interval = 0
 			retry_connection = True
 			while retry_connection:
@@ -133,19 +133,17 @@ class PubSubMonitor(object):
 
 	def _monitor(self):
 		print('monitoring stream')
-		last_cursor = None
 		for line in self._stream_response.iter_lines(chunk_size=1):
 			if line:
 				content = json.loads(line)
-				if self._last_cursor_from_get_subscribers:
-					if content['prev_cursor'] != self._last_cursor_from_get_subscribers:
+				if self._catch_stream_up_to_last_cursor:
+					if content['prev_cursor'] != self._last_cursor:
 						continue
-					self._last_cursor_from_get_subscribers = None
-				if last_cursor and content['prev_cursor'] != last_cursor:
+					self._catch_stream_up_to_last_cursor = False
+				if content['prev_cursor'] != self._last_cursor:
 					print('mismatch')
 					got_subscribers = False
-					# TODO: Test that last_cursor is properly passed.
-					self._try_get_subscribers(last_cursor)
+					self._try_get_subscribers()
 					while not self._closed:
 						try:
 							self._thread_event.wait()
@@ -157,28 +155,27 @@ class PubSubMonitor(object):
 						break
 				else:
 					self._parse_items([content['item']])
-				last_cursor = content['cursor']
+				self._last_cursor = content['cursor']
 
-	def _try_get_subscribers(self, last_cursor=None):
+	def _try_get_subscribers(self):
 		self._thread_event.clear()
 		self._get_subscribers_thread_result = False
-		self._get_subscribers_thread = threading.Thread(
-				target=self._run_get_subscribers, args=(last_cursor,))
+		self._get_subscribers_thread = threading.Thread(target=self._run_get_subscribers)
 		self._get_subscribers_thread.daemon = True
 		self._get_subscribers_thread.start()
 
-	def _run_get_subscribers(self, last_cursor=None):
+	def _run_get_subscribers(self):
 		try:
 			print('trying to get subscriber item list')
 			items = []
 			more_items_available = True
 			while more_items_available:
 				uri = self._items_uri
-				if last_cursor:
+				if self._last_cursor:
 					try:
-						uri += "?" + urllib.urlencode({'since': 'cursor:' + last_cursor})
+						uri += "?" + urllib.urlencode({'since': 'cursor:' + self._last_cursor})
 					except AttributeError:
-						uri += "?" + urllib.parse.urlencode({'since': 'cursor:' + last_cursor})
+						uri += "?" + urllib.parse.urlencode({'since': 'cursor:' + self._last_cursor})
 				wait_interval = 0
 				retry_connection = True
 				while retry_connection:
@@ -205,7 +202,7 @@ class PubSubMonitor(object):
 					except (socket.timeout, requests.exceptions.RequestException):
 						pass
 				content = json.loads(_ensure_unicode(res.content))
-				last_cursor = content['last_cursor']
+				self._last_cursor = content['last_cursor']
 				if not content['items']:
 					more_items_available = False
 				else:
@@ -213,7 +210,7 @@ class PubSubMonitor(object):
 			print('got subscriber items list')
 			self._parse_items(items)
 			self._get_subscribers_thread_result = True
-			self._last_cursor_from_get_subscribers = last_cursor
+			self._catch_stream_up_to_last_cursor = True
 		finally:
 			self._thread_event.set()
 
