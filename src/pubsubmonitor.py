@@ -55,7 +55,6 @@ class PubSubMonitor(object):
 		self._channels = []
 		self._failed = False
 		self._closed = False
-		self._last_cursor_from_get_subscribers = None
 		self._get_subscribers_thread_result = False
 		self._get_subscribers_thread = None
 		self._thread_event = threading.Event()
@@ -78,11 +77,12 @@ class PubSubMonitor(object):
 		return self._failed
 
 	def _run_stream(self):
-		print('trying to open stream')
 		while not self._closed:
+			print('trying to open stream')
 			self._lock.acquire()
 			self._channels = []
 			self._lock.release()
+			self._last_cursor_from_get_subscribers = None
 			wait_interval = 0
 			retry_connection = True
 			while retry_connection:
