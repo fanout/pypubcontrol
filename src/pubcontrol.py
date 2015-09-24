@@ -51,7 +51,7 @@ class PubControl(object):
 
 	# Initialize with or without a configuration. A configuration can be applied
 	# after initialization via the apply_config method. Optionally specify a
-	# subscription callback method that will be executed whenever a channel is 
+	# subscription callback method that will be executed whenever a channel is
 	# subscribed to or unsubscribed from. The callback accepts two parameters:
 	# the first parameter a string containing 'sub' or 'unsub' and the second
 	# parameter containing the channel name. Optionally specify a ZMQ context

@@ -55,6 +55,7 @@ class PubSubMonitor(object):
 		self._channels = []
 		self._failed = False
 		self._closed = False
+		self._last_cursor_from_get_subscribers = None
 		self._get_subscribers_thread_result = False
 		self._get_subscribers_thread = None
 		self._thread_event = threading.Event()
@@ -136,6 +137,10 @@ class PubSubMonitor(object):
 		for line in self._stream_response.iter_lines(chunk_size=1):
 			if line:
 				content = json.loads(line)
+				if self._last_cursor_from_get_subscribers:
+					if content['prev_cursor'] != self._last_cursor_from_get_subscribers:
+						continue
+					self._last_cursor_from_get_subscribers = None
 				if last_cursor and content['prev_cursor'] != last_cursor:
 					print('mismatch')
 					got_subscribers = False
@@ -208,6 +213,7 @@ class PubSubMonitor(object):
 			print('got subscriber items list')
 			self._parse_items(items)
 			self._get_subscribers_thread_result = True
+			self._last_cursor_from_get_subscribers = last_cursor
 		finally:
 			self._thread_event.set()
 
