@@ -127,6 +127,10 @@ class PubSubMonitor(object):
 						break
 					except (socket.timeout, requests.exceptions.Timeout, IncompleteRead):
 						continue
+					except (SSLError as e):
+						if 'timed out' in str(e):
+							continue
+						raise
 				print('closing stream response')
 				self._stream_response.close()
 		print('pubsubmonitor run thread ended')
