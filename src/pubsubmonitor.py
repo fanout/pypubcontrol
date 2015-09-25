@@ -127,7 +127,7 @@ class PubSubMonitor(object):
 						break
 					except (socket.timeout, requests.exceptions.Timeout, IncompleteRead):
 						continue
-					except (SSLError as e):
+					except SSLError as e:
 						if 'timed out' in str(e):
 							continue
 						raise
