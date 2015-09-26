@@ -12,6 +12,7 @@ import json
 import urllib
 import time
 import socket
+from ssl import SSLError
 from .utilities import _gen_auth_jwt_header, _ensure_unicode
 
 try:
@@ -127,7 +128,7 @@ class PubSubMonitor(object):
 						break
 					except (socket.timeout, requests.exceptions.Timeout, IncompleteRead):
 						continue
-					except SSLError as e:
+					except (SSLError, OSError) as e:
 						if 'timed out' in str(e):
 							continue
 						raise
