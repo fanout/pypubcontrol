@@ -12,6 +12,7 @@ import json
 import urllib
 import time
 import socket
+from base64 import b64decode
 from ssl import SSLError
 from .utilities import _gen_auth_jwt_header, _ensure_unicode
 
@@ -141,11 +142,15 @@ class PubSubMonitor(object):
 		for line in self._stream_response.iter_lines(chunk_size=1):
 			if line:
 				content = json.loads(line)
+				print 'last cursor: ' + PubSubMonitor._parse_cursor(self._last_cursor)
 				if self._catch_stream_up_to_last_cursor:
-					if content['prev_cursor'] != self._last_cursor:
+					if (PubSubMonitor._parse_cursor(content['prev_cursor']) !=
+							PubSubMonitor._parse_cursor(self._last_cursor)):
 						continue
+					print('stream caught up to historical fetch cursor')
 					self._catch_stream_up_to_last_cursor = False
-				if content['prev_cursor'] != self._last_cursor:
+				if (PubSubMonitor._parse_cursor(content['prev_cursor']) !=
+						PubSubMonitor._parse_cursor(self._last_cursor)):
 					print('mismatch')
 					got_subscribers = False
 					self._try_get_subscribers()
@@ -216,6 +221,7 @@ class PubSubMonitor(object):
 			self._parse_items(items)
 			self._get_subscribers_thread_result = True
 			self._catch_stream_up_to_last_cursor = True
+			print('last historical fetch cursor: ' + PubSubMonitor._parse_cursor(self._last_cursor))
 		finally:
 			self._thread_event.set()
 
@@ -231,6 +237,11 @@ class PubSubMonitor(object):
 				self._channels.remove(item['channel'])
 				print('removed ' + item['channel'])
 		self._lock.release()
+
+	@staticmethod
+	def _parse_cursor(raw_cursor):
+		decoded_cursor = b64decode(raw_cursor)
+		return decoded_cursor[decoded_cursor.index('_')+1:]
 
 	@staticmethod
 	def _increase_wait_interval(wait_interval):
