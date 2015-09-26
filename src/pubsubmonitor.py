@@ -142,14 +142,16 @@ class PubSubMonitor(object):
 		for line in self._stream_response.iter_lines(chunk_size=1):
 			if line:
 				content = json.loads(line)
-				print 'last cursor: ' + PubSubMonitor._parse_cursor(self._last_cursor)
+				print('last cursor: ' + PubSubMonitor._parse_cursor(self._last_cursor))
 				if self._catch_stream_up_to_last_cursor:
-					if (PubSubMonitor._parse_cursor(content['prev_cursor']) !=
+					if ('prev_cursor' in content and
+							PubSubMonitor._parse_cursor(content['prev_cursor']) !=
 							PubSubMonitor._parse_cursor(self._last_cursor)):
 						continue
 					print('stream caught up to historical fetch cursor')
 					self._catch_stream_up_to_last_cursor = False
-				if (PubSubMonitor._parse_cursor(content['prev_cursor']) !=
+				if ('prev_cursor' in content and
+						PubSubMonitor._parse_cursor(content['prev_cursor']) !=
 						PubSubMonitor._parse_cursor(self._last_cursor)):
 					print('mismatch')
 					got_subscribers = False
