@@ -94,11 +94,11 @@ class PubSubMonitor(object):
 					if sys.version_info >= (2, 7, 9) or (ndg and ndg.httpsclient):
 						self._stream_response = self._requests_session.get(
 								self._stream_uri, headers=self._headers, stream=True,
-								timeout=5)
+								timeout=(5, 60))
 					else:
 						self._stream_response = self._requests_session.get(
 								self._stream_uri, headers=self._headers, verify=False,
-								stream=True, timeout=5)
+								stream=True, timeout=(5, 60))
 					# No concern about a race condition here since there's 5 full
 					# seconds between the .get() method above returning and the
 					# timeout exception being thrown. The lines below are guaranteed
@@ -129,7 +129,7 @@ class PubSubMonitor(object):
 						break
 					except (socket.timeout, requests.exceptions.Timeout, IncompleteRead):
 						continue
-					except (SSLError, OSError) as e:
+					except (SSLError) as e:
 						if 'timed out' in str(e):
 							continue
 						raise
@@ -140,6 +140,9 @@ class PubSubMonitor(object):
 	def _monitor(self):
 		print('monitoring stream')
 		for line in self._stream_response.iter_lines(chunk_size=1):
+			print('got line')
+			if self.closed:
+				break
 			if line:
 				content = json.loads(line)
 				print('last cursor: ' + PubSubMonitor._parse_cursor(self._last_cursor))
@@ -242,7 +245,7 @@ class PubSubMonitor(object):
 
 	@staticmethod
 	def _parse_cursor(raw_cursor):
-		decoded_cursor = b64decode(raw_cursor)
+		decoded_cursor = b64decode(raw_cursor).decode('UTF-8')
 		return decoded_cursor[decoded_cursor.index('_')+1:]
 
 	@staticmethod
