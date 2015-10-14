@@ -147,7 +147,7 @@ class PubSubMonitor(object):
 		print('monitoring stream')
 		for line in self._stream_response.iter_lines(chunk_size=1):
 			print('got line')
-			if self.closed:
+			if self._closed:
 				break
 			if line:
 				content = json.loads(line)
