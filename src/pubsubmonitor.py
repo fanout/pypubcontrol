@@ -17,6 +17,7 @@ from base64 import b64decode
 from ssl import SSLError
 from .utilities import _gen_auth_jwt_header, _ensure_unicode
 from distutils.version import StrictVersion
+from requests.exceptions import ConnectionError
 
 try:
 	from http.client import IncompleteRead
@@ -134,10 +135,11 @@ class PubSubMonitor(object):
 						self._monitor()
 						break
 					except (socket.timeout, requests.exceptions.Timeout, IncompleteRead):
-						continue
-					except (SSLError) as e:
+						break
+					except (SSLError, OSError, ConnectionError) as e:
 						if 'timed out' in str(e):
-							continue
+							break
+						self._failed = True
 						raise
 				print('closing stream response')
 				self._stream_response.close()
