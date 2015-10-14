@@ -150,7 +150,7 @@ class PubSubMonitor(object):
 			if self._closed:
 				break
 			if line:
-				content = json.loads(line)
+				content = json.loads(_ensure_unicode(line))
 				print('last cursor: ' + PubSubMonitor._parse_cursor(self._last_cursor))
 				if self._catch_stream_up_to_last_cursor:
 					if ('prev_cursor' in content and
