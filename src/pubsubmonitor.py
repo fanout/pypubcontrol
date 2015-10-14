@@ -12,9 +12,11 @@ import json
 import urllib
 import time
 import socket
+import pkg_resources
 from base64 import b64decode
 from ssl import SSLError
 from .utilities import _gen_auth_jwt_header, _ensure_unicode
+from distutils.version import StrictVersion
 
 try:
 	from http.client import IncompleteRead
@@ -91,14 +93,18 @@ class PubSubMonitor(object):
 				time.sleep(wait_interval)
 				wait_interval = PubSubMonitor._increase_wait_interval(wait_interval)
 				try:
+					timeout = (5,60)
+					if (StrictVersion(pkg_resources.get_distribution('requests').version) <=
+							StrictVersion('2.3')):
+						timeout = 60
 					if sys.version_info >= (2, 7, 9) or (ndg and ndg.httpsclient):
 						self._stream_response = self._requests_session.get(
 								self._stream_uri, headers=self._headers, stream=True,
-								timeout=(5, 60))
+								timeout=timeout)
 					else:
 						self._stream_response = self._requests_session.get(
 								self._stream_uri, headers=self._headers, verify=False,
-								stream=True, timeout=(5, 60))
+								stream=True, timeout=timeout)
 					# No concern about a race condition here since there's 5 full
 					# seconds between the .get() method above returning and the
 					# timeout exception being thrown. The lines below are guaranteed
