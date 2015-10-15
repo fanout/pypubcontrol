@@ -45,7 +45,7 @@ except AttributeError:
 	pass
 
 class PubSubMonitor(object):
-	def __init__(self, base_stream_uri, auth_jwt_claim=None, auth_jwt_key=None):
+	def __init__(self, base_stream_uri, auth_jwt_claim=None, auth_jwt_key=None, callback=None):
 		if base_stream_uri[-1:] != '/':
 			base_stream_uri += '/'
 		self._stream_uri = base_stream_uri + 'subscriptions/stream/'
@@ -54,10 +54,12 @@ class PubSubMonitor(object):
 			self._headers = dict()
 			self._headers['Authorization'] = _gen_auth_jwt_header(
 					auth_jwt_claim, auth_jwt_key)
+		self._callback = callback
 		self._lock = threading.Lock()
 		self._requests_session = requests.session()
 		self._stream_response = None
 		self._channels = []
+		self._last_cursor = None
 		self._failed = False
 		self._closed = False
 		self._get_subscribers_thread_result = False
@@ -76,18 +78,16 @@ class PubSubMonitor(object):
 		return found_channel
 
 	def close(self):
+		self._callback = None
 		self._closed = True
 
 	def is_failed(self):
+		self._callback = None
 		return self._failed
 
 	def _run_stream(self):
 		while not self._closed:
 			print('trying to open stream')
-			self._lock.acquire()
-			self._channels = []
-			self._lock.release()
-			self._last_cursor = None
 			wait_interval = 0
 			retry_connection = True
 			while retry_connection:
@@ -245,10 +245,12 @@ class PubSubMonitor(object):
 					item['channel'] not in self._channels):
 				self._channels.append(item['channel'])
 				print('added ' + item['channel'])
+				self._callback('sub', item['channel'])
 			elif (item['state'] == 'unsubscribed' and
 					item['channel'] in self._channels):
 				self._channels.remove(item['channel'])
 				print('removed ' + item['channel'])
+				self._callback('unsub', item['channel'])
 		self._lock.release()
 
 	@staticmethod
