@@ -110,7 +110,7 @@ class TestPubControlClient(unittest.TestCase):
 		self.assertEqual(pcc.auth_basic_pass, None)
 		self.assertEqual(pcc.auth_jwt_claim, None)
 		self.assertEqual(pcc.auth_jwt_key, None)
-		self.assertEqual(pcc._sub_monitor, None)
+		self.assertEqual(pcc.sub_monitor, None)
 		self.assertTrue(pcc.lock != None)
 
 	def test_set_auth_basic(self):
@@ -331,7 +331,7 @@ class TestPubControlClient(unittest.TestCase):
 		with self.assertRaises(ValueError):
    			pcc._verify_status_code(199, '')
 		with self.assertRaises(ValueError):
-   			pcc._verify_status_code(300, '')		
+   			pcc._verify_status_code(300, '')
 
 if __name__ == '__main__':
 		unittest.main()

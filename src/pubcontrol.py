@@ -101,14 +101,17 @@ class PubControl(object):
 		try:
 			for entry in config:
 				client = None
+				require_subscribers = entry.get('require_subscribers', False)
 				if 'uri' in entry:
-					client = PubControlClient(entry['uri'])
+					claim = None
+					key = None
 					if 'iss' in entry:
-						client.set_auth_jwt({'iss': entry['iss']}, entry['key'])
+						claim = {'iss': entry['iss']}
+						key = entry['key']
+					client = PubControlClient(entry['uri'], claim, key, require_subscribers)
 				if ('zmq_uri' in entry or 'zmq_push_uri' in entry or
 						'zmq_pub_uri' in entry):
 					_verify_zmq()
-					require_subscribers = entry.get('require_subscribers', False)
 					client = ZmqPubControlClient(entry.get('zmq_uri'),
 							entry.get('zmq_push_uri'), entry.get('zmq_pub_uri'),
 							require_subscribers, True, None, self._zmq_ctx,

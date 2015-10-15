@@ -94,7 +94,7 @@ class PubControlClient(object):
 		self._verify_notclosed()
 		if self.sub_monitor and self.sub_monitor.is_failed():
 			if callback:
-				callback(True, '')
+				callback(False, 'failed to retrieve channel subscribers')
 			else:
 				raise ValueError('failed to retrieve channel subscribers')
 		elif self.sub_monitor and not self.sub_monitor.is_channel_subscribed_to(channel):
