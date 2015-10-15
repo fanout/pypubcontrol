@@ -47,7 +47,7 @@ class PubControlClient(object):
 
 	# Initialize this class with a URL representing the publishing endpoint.
 	def __init__(self, uri, auth_jwt_claim=None,
-			auth_jwt_key=None, require_subscribers=False):
+			auth_jwt_key=None, require_subscribers=False, sub_callback=None):
 		self.uri = uri
 		self.lock = threading.Lock()
 		self.thread = None
@@ -61,7 +61,7 @@ class PubControlClient(object):
 		self.sub_monitor = None
 		self.closed = False
 		if require_subscribers:
-			self.sub_monitor = PubSubMonitor(uri, auth_jwt_claim, auth_jwt_key)
+			self.sub_monitor = PubSubMonitor(uri, auth_jwt_claim, auth_jwt_key, sub_callback)
 
 	# Call this method and pass a username and password to use basic
 	# authentication with the configured endpoint.

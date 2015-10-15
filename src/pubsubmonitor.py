@@ -84,7 +84,6 @@ class PubSubMonitor(object):
 			self._stream_thread.join()
 
 	def is_failed(self):
-		self._callback = None
 		return self._failed
 
 	def _run_stream(self):
@@ -118,6 +117,7 @@ class PubSubMonitor(object):
 					elif (self._stream_response.status_code < 500 or
 							self._stream_response.status_code == 501 or
 							self._stream_response.status_code >= 600):
+						self._callback = None
 						self._failed = True
 						return
 					else:
@@ -141,6 +141,7 @@ class PubSubMonitor(object):
 					except (SSLError, OSError, ConnectionError) as e:
 						if 'timed out' in str(e):
 							break
+						self._callback = None
 						self._failed = True
 						raise
 				#print('closing stream response')
