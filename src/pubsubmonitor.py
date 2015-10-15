@@ -77,9 +77,11 @@ class PubSubMonitor(object):
 		self._lock.release()
 		return found_channel
 
-	def close(self):
+	def close(self, blocking=False):
 		self._callback = None
 		self._closed = True
+		if blocking:
+			self._stream_thread.join()
 
 	def is_failed(self):
 		self._callback = None
