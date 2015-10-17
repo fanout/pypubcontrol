@@ -60,7 +60,6 @@ class PubSubMonitor(object):
 		self._stream_response = None
 		self._channels = []
 		self._last_cursor = None
-		self._failed = False
 		self._closed = False
 		self._historical_fetch_thread_result = False
 		self._historical_fetch_thread = None
@@ -78,13 +77,13 @@ class PubSubMonitor(object):
 		return found_channel
 
 	def close(self, blocking=False):
-		self._callback = None
 		self._closed = True
+		self._callback = None
 		if blocking:
 			self._stream_thread.join()
 
-	def is_failed(self):
-		return self._failed
+	def is_closed(self):
+		return self._closed
 
 	def _run_stream(self):
 		while not self._closed:
@@ -117,9 +116,10 @@ class PubSubMonitor(object):
 					elif (self._stream_response.status_code < 500 or
 							self._stream_response.status_code == 501 or
 							self._stream_response.status_code >= 600):
-						self._callback = None
-						self._failed = True
-						return
+						self.close()
+						raise ValueError(
+								'pubsubmonitor stream connection resulted in status code: ' +
+								str(self._stream_response.status_code))
 					else:
 						continue
 					#print('opened stream')
@@ -142,7 +142,6 @@ class PubSubMonitor(object):
 						if 'timed out' in str(e):
 							break
 						self._callback = None
-						self._failed = True
 						raise
 				#print('closing stream response')
 				self._stream_response.close()
@@ -170,14 +169,8 @@ class PubSubMonitor(object):
 					#print('mismatch')
 					got_subscribers = False
 					self._try_historical_fetch()
-					while not self._closed:
-						try:
-							self._thread_event.wait()
-							got_subscribers = self._historical_fetch_thread_result
-							break
-						except (socket.timeout, requests.exceptions.Timeout):
-							continue
-					if not got_subscribers:
+					self._thread_event.wait()
+					if not self._historical_fetch_thread_result:
 						break
 				else:
 					self._parse_items([content['item']])
@@ -220,11 +213,18 @@ class PubSubMonitor(object):
 						if (res.status_code >= 200 and
 								res.status_code < 300):
 							retry_connection = False
+						elif res.status_code == 404:
+							self._unsub_and_clear_channels()
+							self._historical_fetch_thread_result = False
+							return
 						elif (res.status_code < 500 or
 								res.status_code == 501 or
 								res.status_code >= 600):
 							self._historical_fetch_thread_result = False
-							return
+							self.close()
+							raise ValueError(
+									'pubsubmonitor historical fetch connection resulted in status code: ' +
+									str(res.status_code))
 					except (socket.timeout, requests.exceptions.RequestException):
 						pass
 				content = json.loads(_ensure_unicode(res.content))
@@ -240,6 +240,13 @@ class PubSubMonitor(object):
 			#print('last historical fetch cursor: ' + PubSubMonitor._parse_cursor(self._last_cursor))
 		finally:
 			self._thread_event.set()
+
+	def _unsub_and_clear_channels(self):
+		if self._callback:
+			for channel in self._channels:
+				self._callback('unsub', channel)
+		self._channels = []
+		self._last_cursor = None
 
 	def _parse_items(self, items):
 		self._lock.acquire()

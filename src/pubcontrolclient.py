@@ -92,7 +92,7 @@ class PubControlClient(object):
 	# raised.
 	def publish(self, channel, item, blocking=False, callback=None):
 		self._verify_notclosed()
-		if self.sub_monitor and self.sub_monitor.is_failed():
+		if self.sub_monitor and self.sub_monitor.is_closed():
 			if callback:
 				callback(False, 'failed to retrieve channel subscribers')
 			else:
