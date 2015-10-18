@@ -79,15 +79,17 @@ class PubSubMonitor(object):
 	def close(self, blocking=False):
 		self._closed = True
 		self._callback = None
-		if blocking:
-			self._stream_thread.join()
+		stream_thread = self._stream_thread
+		self._stream_thread = None
+		if blocking and stream_thread:
+			stream_thread.join()
 
 	def is_closed(self):
 		return self._closed
 
 	def _run_stream(self):
 		while not self._closed:
-			#print('trying to open stream')
+			print('trying to open stream')
 			wait_interval = 0
 			retry_connection = True
 			while retry_connection:
@@ -122,7 +124,7 @@ class PubSubMonitor(object):
 								str(self._stream_response.status_code))
 					else:
 						continue
-					#print('opened stream')
+					print('opened stream')
 					self._try_historical_fetch()
 				except (socket.timeout, requests.exceptions.RequestException):
 					continue
@@ -143,30 +145,30 @@ class PubSubMonitor(object):
 							break
 						self._callback = None
 						raise
-				#print('closing stream response')
+				print('closing stream response')
 				self._stream_response.close()
-		#print('pubsubmonitor run thread ended')
+		print('pubsubmonitor run thread ended')
 
 	def _monitor(self):
-		#print('monitoring stream')
+		print('monitoring stream')
 		for line in self._stream_response.iter_lines(chunk_size=1):
-			#print('got line')
+			print('got line')
 			if self._closed:
 				break
 			if line:
 				content = json.loads(_ensure_unicode(line))
-				#print('last cursor: ' + PubSubMonitor._parse_cursor(self._last_cursor))
+				print('last cursor: ' + PubSubMonitor._parse_cursor(self._last_cursor))
 				if self._catch_stream_up_to_last_cursor:
 					if ('prev_cursor' in content and
 							PubSubMonitor._parse_cursor(content['prev_cursor']) !=
 							PubSubMonitor._parse_cursor(self._last_cursor)):
 						continue
-					#print('stream caught up to historical fetch cursor')
+					print('stream caught up to historical fetch cursor')
 					self._catch_stream_up_to_last_cursor = False
 				if ('prev_cursor' in content and
 						PubSubMonitor._parse_cursor(content['prev_cursor']) !=
 						PubSubMonitor._parse_cursor(self._last_cursor)):
-					#print('mismatch')
+					print('mismatch')
 					got_subscribers = False
 					self._try_historical_fetch()
 					self._thread_event.wait()
@@ -185,7 +187,7 @@ class PubSubMonitor(object):
 
 	def _run_historical_fetch(self):
 		try:
-			#print('trying to get subscriber item list')
+			print('trying to get subscriber item list')
 			items = []
 			more_items_available = True
 			while more_items_available:
@@ -233,11 +235,11 @@ class PubSubMonitor(object):
 					more_items_available = False
 				else:
 					items.extend(content['items'])
-			#print('got subscriber items list')
+			print('got subscriber items list')
 			self._parse_items(items)
 			self._historical_fetch_thread_result = True
 			self._catch_stream_up_to_last_cursor = True
-			#print('last historical fetch cursor: ' + PubSubMonitor._parse_cursor(self._last_cursor))
+			print('last historical fetch cursor: ' + PubSubMonitor._parse_cursor(self._last_cursor))
 		finally:
 			self._thread_event.set()
 
@@ -254,13 +256,13 @@ class PubSubMonitor(object):
 			if (item['state'] == 'subscribed' and
 					item['channel'] not in self._channels):
 				self._channels.append(item['channel'])
-				#print('added ' + item['channel'])
+				print('added ' + item['channel'])
 				if self._callback:
 					self._callback('sub', item['channel'])
 			elif (item['state'] == 'unsubscribed' and
 					item['channel'] in self._channels):
 				self._channels.remove(item['channel'])
-				#print('removed ' + item['channel'])
+				print('removed ' + item['channel'])
 				if self._callback:
 					self._callback('unsub', item['channel'])
 		self._lock.release()
