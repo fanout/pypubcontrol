@@ -77,10 +77,12 @@ class PubSubMonitor(object):
 		return found_channel
 
 	def close(self, blocking=False):
+		self._lock.acquire()
 		self._closed = True
 		self._callback = None
 		stream_thread = self._stream_thread
 		self._stream_thread = None
+		self._lock.release()
 		if blocking and stream_thread:
 			stream_thread.join()
 
@@ -247,8 +249,10 @@ class PubSubMonitor(object):
 		if self._callback:
 			for channel in self._channels:
 				self._callback('unsub', channel)
+		self._lock.acquire()
 		self._channels = []
 		self._last_cursor = None
+		self._lock.release()
 
 	def _parse_items(self, items):
 		self._lock.acquire()
