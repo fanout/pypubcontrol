@@ -44,7 +44,11 @@ except NameError:
 except AttributeError:
 	pass
 
+# The PubSubMonitor class monitors subscriptions to channels via an HTTP interface.
 class PubSubMonitor(object):
+
+	# Initialize with base stream URI, JWT auth info, and callback used for indicating
+	# when a subscription event occurs.
 	def __init__(self, base_stream_uri, auth_jwt_claim=None, auth_jwt_key=None, callback=None):
 		if base_stream_uri[-1:] != '/':
 			base_stream_uri += '/'
@@ -68,6 +72,7 @@ class PubSubMonitor(object):
 		self._stream_thread.daemon = True
 		self._stream_thread.start()
 
+	# Determine if the specified channel has been subscribed to.
 	def is_channel_subscribed_to(self, channel):
 		found_channel = False
 		self._lock.acquire()
@@ -76,6 +81,7 @@ class PubSubMonitor(object):
 		self._lock.release()
 		return found_channel
 
+	# Close this instance and block until all threads are complete.
 	def close(self, blocking=False):
 		self._lock.acquire()
 		self._closed = True
@@ -86,9 +92,11 @@ class PubSubMonitor(object):
 		if blocking and stream_thread:
 			stream_thread.join()
 
+	# Determine if this instance is closed.
 	def is_closed(self):
 		return self._closed
 
+	# Run the stream connection.
 	def _run_stream(self):
 		while not self._closed:
 			wait_interval = 0
@@ -151,6 +159,7 @@ class PubSubMonitor(object):
 				self._stream_response.close()
 		#print('pubsubmonitor run thread ended')
 
+	# Monitor the stream connection.
 	def _monitor(self):
 		#print('monitoring stream')
 		for line in self._stream_response.iter_lines(chunk_size=1):
@@ -180,6 +189,7 @@ class PubSubMonitor(object):
 					self._parse_items([content['item']])
 				self._last_cursor = content['cursor']
 
+	# Try to complete the historical fetch.
 	def _try_historical_fetch(self):
 		self._thread_event.clear()
 		self._historical_fetch_thread_result = False
@@ -187,6 +197,7 @@ class PubSubMonitor(object):
 		self._historical_fetch_thread.daemon = True
 		self._historical_fetch_thread.start()
 
+	# Run the historical fetch.
 	def _run_historical_fetch(self):
 		try:
 			#print('trying to get subscriber item list')
@@ -245,6 +256,7 @@ class PubSubMonitor(object):
 		finally:
 			self._thread_event.set()
 
+	# Unsubscribe from and clear all channels.
 	def _unsub_and_clear_channels(self):
 		#print('unsubbing and clearing channels')
 		if self._callback:
@@ -255,6 +267,7 @@ class PubSubMonitor(object):
 		self._last_cursor = None
 		self._lock.release()
 
+	# Parse the specified items by updating the internal list and calling callbacks.
 	def _parse_items(self, items):
 		self._lock.acquire()
 		for item in items:
@@ -272,11 +285,13 @@ class PubSubMonitor(object):
 					self._callback('unsub', item['channel'])
 		self._lock.release()
 
+	# Parse the specified cursor.
 	@staticmethod
 	def _parse_cursor(raw_cursor):
 		decoded_cursor = b64decode(raw_cursor).decode('UTF-8')
 		return decoded_cursor[decoded_cursor.index('_')+1:]
 
+	# Increase the wait interval from the specified interval.
 	@staticmethod
 	def _increase_wait_interval(wait_interval):
 		if wait_interval <= 1:
