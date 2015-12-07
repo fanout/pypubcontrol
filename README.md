@@ -1,6 +1,6 @@
 PyPubControl
 ============
-Authors: Justin Karneges <justin@fanout.io>, Konstantin Bokarius <kon@fanout.io> 
+Authors: Justin Karneges <justin@fanout.io>, Konstantin Bokarius <kon@fanout.io>
 
 EPCP library for Python.
 
@@ -58,7 +58,7 @@ pub = PubControl({'uri': 'https://api.fanout.io/realm/<myrealm>',
         'iss': '<myrealm>', 'key': b64decode('<realmkey>')})
 
 # Add new endpoints by applying an endpoint configuration:
-pub.apply_config([{'uri': '<myendpoint_uri_1>'}, 
+pub.apply_config([{'uri': '<myendpoint_uri_1>'},
         {'uri': '<myendpoint_uri_2>'}])
 
 # Remove all configured endpoints:
@@ -76,6 +76,32 @@ pub.publish('<channel>', Item(HttpResponseFormat('Test async publish!')),
         blocking=False, callback=callback)
 ```
 
+Requiring Subscribers
+---------------------
+
+You can configured PubControl to require subscribers when publishing messages in both PubControlClient and PubControl. When requiring subscribers the internal PubSubMonitor class is used to keep track of all subscribed-to channels and acts as a filter to prevent messages from being published to channels that have no subscribers. Note that a message published to non-subscribed-to channel does not result in a failure - the message is simply dropped and a successful result is sent back to the caller.
+
+Using PubControlClient:
+
+```python
+def callback(type, channel):
+    if type == "sub":
+        print(channel + " has subscribers")
+    else:
+        print(channel + " no longer has subscribers")
+
+pub = PubControlClient('https://api.fanout.io/realm/<myrealm>',
+        {'iss': '<myrealm>'}, b64decode('<realmkey>'), True, callback)
+```
+
+Using PubControl:
+
+```python
+pub = PubControl({'uri': 'https://api.fanout.io/realm/<myrealm>',
+        'iss': '<myrealm>', 'key': b64decode('<realmkey>'),
+        'require_subscribers': True})
+```
+
 ZMQ Publishing
 --------------
 
@@ -86,7 +112,7 @@ While you can explicitly specify the PUSH and XPUB socket URIs, the recommended 
 NOTE: ZMQ publishing requires that the pyzmq and tnetstring packages are installed.
 
 ```python
-# Initialize PubControl with a ZMQ command URI and indicate that the XPUB socket 
+# Initialize PubControl with a ZMQ command URI and indicate that the XPUB socket
 # should be used via the require_subscribers key:
 pub = PubControl({'zmq_uri': 'tcp://localhost:5563', 'require_subscribers': True)})
 ```
