@@ -79,7 +79,7 @@ pub.publish('<channel>', Item(HttpResponseFormat('Test async publish!')),
 Requiring Subscribers
 ---------------------
 
-You can configured PubControl to require subscribers when publishing messages in both PubControlClient and PubControl. When requiring subscribers the internal PubSubMonitor class is used to keep track of all subscribed-to channels and acts as a filter to prevent messages from being published to channels that have no subscribers. Note that a message published to non-subscribed-to channel does not result in a failure - the message is simply dropped and a successful result is sent back to the caller.
+You can configure PubControl to require subscribers when publishing messages in both PubControlClient and PubControl. When requiring subscribers the internal PubSubMonitor class is used to keep track of all subscribed-to channels and acts as a filter to prevent messages from being published to channels that have no subscribers. Note that a message published to non-subscribed-to channel does not result in a failure - the message is simply dropped and a successful result is sent back to the caller.
 
 Using PubControlClient:
 
