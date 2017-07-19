@@ -9,13 +9,13 @@ EPCP library for Python.
 You can install from PyPi:
 
 ```sh
-sudo pip install pubcontrol
+pip install pubcontrol
 ```
 
 Or from this repository:
 
 ```sh
-sudo python setup.py install
+python setup.py install
 ```
 
 NOTE: ZMQ publishing requires the `pyzmq` and `tnetstring` (`tnetstring3` for Python 3) packages to be installed.
