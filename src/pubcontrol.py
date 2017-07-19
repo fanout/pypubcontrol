@@ -116,6 +116,8 @@ class PubControl(object):
 							entry.get('zmq_push_uri'), entry.get('zmq_pub_uri'),
 							require_subscribers, True, None, self._zmq_ctx,
 							self._discovery_callback)
+					if not entry.get('zmq_uri') and entry.get('zmq_pub_uri') and require_subscribers:
+						self._connect_zmq_pub_uri(entry['zmq_pub_uri'])
 				if client:
 					clients.append(client)
 		except:
