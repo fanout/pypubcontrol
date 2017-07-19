@@ -17,14 +17,15 @@ class Item(object):
 
 	# The initialize method can accept either a single Format implementation
 	# instance or an array of Format implementation instances. Optionally
-	# specify an ID and/or previous ID to be sent as part of the message
-	# published to the client.
-	def __init__(self, formats, id=None, prev_id=None):
+	# specify an ID, previous ID and/or metadata values to be sent as part
+	# of the message published to the client.
+	def __init__(self, formats, id=None, prev_id=None, meta={}):
 		self.id = id
 		self.prev_id = prev_id
 		if isinstance(formats, Format):
 			formats = [formats]
 		self.formats = formats
+		self.meta = meta
 
 	# The export method serializes all of the formats, ID, and previous ID
 	# into a hash that is used for publishing to clients. If more than one
@@ -46,6 +47,8 @@ class Item(object):
 			out['id'] = self.id
 		if self.prev_id:
 			out['prev-id'] = self.prev_id
+		if self.meta:
+			out['meta'] = self.meta
 		if formats_field:
 			out['formats'] = dict()
 			for f in self.formats:
