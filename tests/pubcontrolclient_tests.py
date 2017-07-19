@@ -329,9 +329,9 @@ class TestPubControlClient(unittest.TestCase):
 		pcc._verify_status_code(250, '')
 		pcc._verify_status_code(299, '')
 		with self.assertRaises(ValueError):
-   			pcc._verify_status_code(199, '')
+			pcc._verify_status_code(199, '')
 		with self.assertRaises(ValueError):
-   			pcc._verify_status_code(300, '')
+			pcc._verify_status_code(300, '')
 
 if __name__ == '__main__':
 		unittest.main()
