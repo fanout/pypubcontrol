@@ -9,15 +9,19 @@ import sys
 import requests
 import threading
 import json
+import copy
 import urllib
 import time
 import socket
+import logging
 import pkg_resources
 from base64 import b64decode
 from ssl import SSLError
 from .utilities import _gen_auth_jwt_header, _ensure_unicode
 from distutils.version import StrictVersion
 from requests.exceptions import ConnectionError
+
+logger = logging.getLogger(__name__)
 
 try:
 	from http.client import IncompleteRead
@@ -54,10 +58,10 @@ class PubSubMonitor(object):
 			base_stream_uri += '/'
 		self._stream_uri = base_stream_uri + 'subscriptions/stream/'
 		self._items_uri = base_stream_uri + 'subscriptions/items/'
+		self._auth_jwt_claim = None
 		if auth_jwt_claim:
-			self._headers = dict()
-			self._headers['Authorization'] = _gen_auth_jwt_header(
-					auth_jwt_claim, auth_jwt_key)
+			self._auth_jwt_claim = copy.deepcopy(auth_jwt_claim)
+			self._auth_jwt_key = auth_jwt_key
 		self._callback = callback
 		self._lock = threading.Lock()
 		self._requests_session = requests.session()
@@ -98,25 +102,29 @@ class PubSubMonitor(object):
 
 	# Run the stream connection.
 	def _run_stream(self):
+		logger.debug('stream thread started')
 		while not self._closed:
 			wait_interval = 0
 			retry_connection = True
 			while retry_connection:
-				#print('trying to open stream')
 				time.sleep(wait_interval)
 				wait_interval = PubSubMonitor._increase_wait_interval(wait_interval)
 				try:
+					logger.debug('stream get %s' % self._stream_uri)
 					timeout = (5,60)
 					if (StrictVersion(pkg_resources.get_distribution('requests').version) <=
 							StrictVersion('2.3')):
 						timeout = 60
+					headers = {}
+					headers['Authorization'] = _gen_auth_jwt_header(
+							self._auth_jwt_claim, self._auth_jwt_key)
 					if sys.version_info >= (2, 7, 9) or (ndg and ndg.httpsclient):
 						self._stream_response = self._requests_session.get(
-								self._stream_uri, headers=self._headers, stream=True,
+								self._stream_uri, headers=headers, stream=True,
 								timeout=timeout)
 					else:
 						self._stream_response = self._requests_session.get(
-								self._stream_uri, headers=self._headers, verify=False,
+								self._stream_uri, headers=headers, verify=False,
 								stream=True, timeout=timeout)
 					# No concern about a race condition here since there's 5 full
 					# seconds between the .get() method above returning and the
@@ -130,11 +138,11 @@ class PubSubMonitor(object):
 							self._stream_response.status_code >= 600):
 						self.close()
 						raise ValueError(
-								'pubsubmonitor stream connection resulted in status code: ' +
-								str(self._stream_response.status_code))
+								'pubsubmonitor stream connection resulted in status code: %d' %
+								self._stream_response.status_code)
 					else:
 						continue
-					#print('opened stream')
+					logger.debug('stream open')
 					self._try_historical_fetch()
 				except (socket.timeout, requests.exceptions.RequestException):
 					continue
@@ -149,45 +157,64 @@ class PubSubMonitor(object):
 						self._monitor()
 						break
 					except (socket.timeout, requests.exceptions.Timeout, IncompleteRead):
+						logger.debug('stream timed out')
 						break
 					except (SSLError, OSError, ConnectionError) as e:
 						if 'timed out' in str(e):
+							logger.debug('stream timed out')
 							break
 						self._callback = None
 						raise
-				#print('closing stream response')
+					except:
+						logger.exception('error processing stream')
 				self._stream_response.close()
-		#print('pubsubmonitor run thread ended')
+		logger.debug('stream thread ended')
 
 	# Monitor the stream connection.
 	def _monitor(self):
-		#print('monitoring stream')
 		for line in self._stream_response.iter_lines(chunk_size=1):
-			#print('got line')
 			if self._closed:
 				break
-			if line:
-				content = json.loads(_ensure_unicode(line))
-				#print('last cursor: ' + PubSubMonitor._parse_cursor(self._last_cursor))
-				if self._catch_stream_up_to_last_cursor:
-					if ('prev_cursor' in content and
-							PubSubMonitor._parse_cursor(content['prev_cursor']) !=
-							PubSubMonitor._parse_cursor(self._last_cursor)):
-						continue
-					#print('stream caught up to historical fetch cursor')
-					self._catch_stream_up_to_last_cursor = False
-				if ('prev_cursor' in content and
-						PubSubMonitor._parse_cursor(content['prev_cursor']) !=
-						PubSubMonitor._parse_cursor(self._last_cursor)):
-					#print('mismatch')
-					got_subscribers = False
-					self._try_historical_fetch()
-					self._thread_event.wait()
-					if not self._historical_fetch_thread_result:
-						break
-				else:
-					self._parse_items([content['item']])
-				self._last_cursor = content['cursor']
+
+			now = time.time()
+			if (self._catch_stream_up_to_last_cursor and
+					now >= self._catch_stream_up_start_time + 60):
+				logger.debug('timed out waiting to catch up')
+				break
+
+			if not line:
+				continue
+
+			content = json.loads(_ensure_unicode(line))
+
+			last_cursor_parsed = PubSubMonitor._parse_cursor(
+					self._last_cursor)
+
+			prev_cursor_parsed = None
+			if 'prev_cursor' in content:
+				prev_cursor_parsed = PubSubMonitor._parse_cursor(
+						content['prev_cursor'])
+
+			if self._catch_stream_up_to_last_cursor:
+				if (prev_cursor_parsed and
+						prev_cursor_parsed != last_cursor_parsed):
+					continue
+				logger.debug('stream caught up to last cursor')
+				self._catch_stream_up_to_last_cursor = False
+			if (prev_cursor_parsed and
+					prev_cursor_parsed != last_cursor_parsed):
+				logger.debug('stream cursor mismatch: got=%s expected=%s' % (
+						prev_cursor_parsed, last_cursor_parsed))
+				self._try_historical_fetch()
+				self._thread_event.wait()
+				if not self._historical_fetch_thread_result:
+					break
+			else:
+				self._parse_items([content['item']])
+
+			self._last_cursor = content['cursor']
+			logger.debug('last cursor: %s' %
+					PubSubMonitor._parse_cursor(self._last_cursor))
 
 	# Try to complete the historical fetch.
 	def _try_historical_fetch(self):
@@ -200,16 +227,17 @@ class PubSubMonitor(object):
 	# Run the historical fetch.
 	def _run_historical_fetch(self):
 		try:
-			#print('trying to get subscriber item list')
+			self._last_stream_cursor = None
+			logger.debug('catching up')
 			items = []
 			more_items_available = True
 			while more_items_available:
 				uri = self._items_uri
 				if self._last_cursor:
 					try:
-						uri += "?" + urllib.urlencode({'since': 'cursor:' + self._last_cursor})
+						uri += "?" + urllib.urlencode({'since': 'cursor:%s' % self._last_cursor})
 					except AttributeError:
-						uri += "?" + urllib.parse.urlencode({'since': 'cursor:' + self._last_cursor})
+						uri += "?" + urllib.parse.urlencode({'since': 'cursor:%s' % self._last_cursor})
 				wait_interval = 0
 				retry_connection = True
 				while retry_connection:
@@ -219,11 +247,20 @@ class PubSubMonitor(object):
 					time.sleep(wait_interval)
 					wait_interval = PubSubMonitor._increase_wait_interval(wait_interval)
 					try:
+						if self._last_cursor:
+							logger.debug('history get %s (%s)' % (
+									uri, PubSubMonitor._parse_cursor(
+									self._last_cursor)))
+						else:
+							logger.debug('history get %s' % uri)
+						headers = {}
+						headers['Authorization'] = _gen_auth_jwt_header(
+								self._auth_jwt_claim, self._auth_jwt_key)
 						if sys.version_info >= (2, 7, 9) or (ndg and ndg.httpsclient):
-							res = self._requests_session.get(uri, headers=self._headers,
+							res = self._requests_session.get(uri, headers=headers,
 									timeout=30)
 						else:
-							res = self._requests_session.get(uri, headers=self._headers,
+							res = self._requests_session.get(uri, headers=headers,
 									verify=False, timeout=30)
 						if (res.status_code >= 200 and
 								res.status_code < 300):
@@ -238,8 +275,8 @@ class PubSubMonitor(object):
 							self._historical_fetch_thread_result = False
 							self.close()
 							raise ValueError(
-									'pubsubmonitor historical fetch connection resulted in status code: ' +
-									str(res.status_code))
+									'pubsubmonitor historical fetch connection resulted in status code: %d' %
+									res.status_code)
 					except (socket.timeout, requests.exceptions.RequestException):
 						pass
 				content = json.loads(_ensure_unicode(res.content))
@@ -248,17 +285,17 @@ class PubSubMonitor(object):
 					more_items_available = False
 				else:
 					items.extend(content['items'])
-			#print('got subscriber items list')
 			self._parse_items(items)
 			self._historical_fetch_thread_result = True
 			self._catch_stream_up_to_last_cursor = True
-			#print('last historical fetch cursor: ' + PubSubMonitor._parse_cursor(self._last_cursor))
+			self._catch_stream_up_start_time = time.time()
+			logger.debug('last cursor: %s' % PubSubMonitor._parse_cursor(self._last_cursor))
 		finally:
 			self._thread_event.set()
 
 	# Unsubscribe from and clear all channels.
 	def _unsub_and_clear_channels(self):
-		#print('unsubbing and clearing channels')
+		logger.debug('unsubbing and clearing channels')
 		if self._callback:
 			for channel in self._channels:
 				self._callback('unsub', channel)
@@ -274,13 +311,13 @@ class PubSubMonitor(object):
 			if (item['state'] == 'subscribed' and
 					item['channel'] not in self._channels):
 				self._channels.append(item['channel'])
-				#print('added ' + item['channel'])
+				logger.debug('added %s' % item['channel'])
 				if self._callback:
 					self._callback('sub', item['channel'])
 			elif (item['state'] == 'unsubscribed' and
 					item['channel'] in self._channels):
 				self._channels.remove(item['channel'])
-				#print('removed ' + item['channel'])
+				logger.debug('removed %s' % item['channel'])
 				if self._callback:
 					self._callback('unsub', item['channel'])
 		self._lock.release()
