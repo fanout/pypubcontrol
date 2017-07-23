@@ -6,7 +6,10 @@
 #    :license: MIT, see LICENSE for more details.
 
 import threading
+import logging
 from .utilities import _verify_zmq, _ensure_utf8
+
+logger = logging.getLogger(__name__)
 
 try:
 	import zmq
@@ -26,6 +29,7 @@ class ZmqPubController(object):
 	def __init__(self, callback, zmq_context=None):
 		_verify_zmq()
 		self.subscriptions = set()
+		self._lock = threading.Lock()
 		self._callback = callback
 		self._context = zmq_context
 		if self._context is None:
@@ -62,6 +66,15 @@ class ZmqPubController(object):
 	def stop(self):
 		self._command_control_sock.send(_ensure_utf8('\x03'))
 
+	# Determine if the specified channel has been subscribed to.
+	def is_channel_subscribed_to(self, channel):
+		found_channel = False
+		self._lock.acquire()
+		if channel in self.subscriptions:
+			found_channel = True
+		self._lock.release()
+		return found_channel
+
 	# This method is meant to run a separate thread and poll the ZMQ control
 	# socket for control messages and the pub socket for subscribe and
 	# unsubscribe events.
@@ -92,6 +105,8 @@ class ZmqPubController(object):
 	# received by the control socket triggers a connection.
 	def _setup_pub_socket(self):
 		self._pub_sock = self._context.socket(zmq.XPUB)
+		# infinite buffer for subscription notifications
+		self._pub_sock.rcvhwm = 0
 		self._pub_sock.linger = 0
 		self._poller.register(self._pub_sock, zmq.POLLIN)
 
@@ -125,10 +140,20 @@ class ZmqPubController(object):
 			if mtype == '\x01':
 				if item not in self.subscriptions:
 					if self._callback:
-						self._callback('sub', item)
+						try:
+							self._callback('sub', item)
+						except Exception:
+							logger.exception('error calling callback')
+					self._lock.acquire()
 					self.subscriptions.add(item)
+					self._lock.release()
 			elif mtype == '\x00':
 				if item in self.subscriptions:
+					if self._callback:
+						try:
+							self._callback('unsub', item)
+						except Exception:
+							logger.exception('error calling callback')
+					self._lock.acquire()
 					self.subscriptions.remove(item)
-				if self._callback:
-					self._callback('unsub', item)
+					self._lock.release()
