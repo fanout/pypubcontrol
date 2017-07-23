@@ -49,6 +49,21 @@ atexit.register(_close_pubcontrols)
 # 'close' method will raise an exception if it is used.
 class PubControl(object):
 
+	# The SubCallbackHandler class is a helper that associate a callback with
+	# its originating client instance.
+	class SubCallbackHandler(object):
+		def __init__(self, callback):
+			self.callback = callback
+			self.lock = threading.Lock()
+			self.client = None
+
+		def handle(self, eventType, channel):
+			self.lock.acquire()
+			client = self.client
+			self.lock.release()
+			if client:
+				self.callback(client, eventType, channel)
+
 	# Initialize with or without a configuration. A configuration can be applied
 	# after initialization via the apply_config method. Optionally specify a
 	# subscription callback method that will be executed whenever a channel is
@@ -91,8 +106,8 @@ class PubControl(object):
 	# instance. Each dict will be parsed and a client instance will be created.
 	# Specify a 'uri' dict key along with optional JWT authentication 'iss' and
 	# 'key' dict keys for a PubControlClient configuration. Specify a combination
-	# of 'zmq_uri', 'zmq_pub_uri', or 'zmq_push_uri' dict keys and an optional
-	# 'zmq_require_subscribers' dict key for a ZmqPubControlClient configuration.
+	# of 'zmq_uri', 'zmq_pub_uri', or 'zmq_push_uri' dict keys for a
+	# ZmqPubControlClient configuration.
 	def apply_config(self, config):
 		self._verify_not_closed()
 		if not isinstance(config, list):
@@ -108,7 +123,15 @@ class PubControl(object):
 					if 'iss' in entry:
 						claim = {'iss': entry['iss']}
 						key = entry['key']
-					client = PubControlClient(entry['uri'], claim, key, require_subscribers)
+					handler = PubControl.SubCallbackHandler(self._client_sub_callback)
+					try:
+						handler.lock.acquire()
+						client = PubControlClient(entry['uri'],
+								claim, key, require_subscribers,
+								handler.handle)
+						handler.client = client
+					finally:
+						handler.lock.release()
 				if ('zmq_uri' in entry or 'zmq_push_uri' in entry or
 						'zmq_pub_uri' in entry):
 					_verify_zmq()
@@ -213,25 +236,51 @@ class PubControl(object):
 		self._lock.release()
 
 	# An internal method used as a callback for the ZmqPubController
-	# instance. The purpose of this callback is to aggregate sub and unsub
-	# events coming from the monitor and any clients that have their own
-	# monitor. The consumer's sub_callback is executed when a channel is
-	# first subscribed to for the first time across any clients or when a
-	# channel is unsubscribed to across all clients.
-	# NOTE: This method assumes that the ZmqPubController instance will
-	# execute the callback: 1) before adding a subscription to its list
-	# upon a 'sub' event, and 2) after removing a subscription from its
-	# list upon an 'unsub' event.
-	def _pub_controller_callback(self, eventType, chan):
-		executeCallback = True
+	# instance.
+	def _pub_controller_callback(self, eventType, channel):
+		# use the ZmqPubController instance as the "client"
+		self._client_sub_callback(self._zmq_pub_controller, eventType, channel)
+
+	# An internal method for processing subscription callbacks from
+	# PubControlClient (and, indirectly, ZmqPubController). The purpose of
+	# this callback is to aggregate sub and unsub events. The consumer's
+	# sub_callback is executed when a channel is subscribed to for the first
+	# time across any clients or when a channel is unsubscribed from all
+	# clients.
+	# NOTE: this method assumes that PubControlClient and ZmqPubController
+	# will execute their callbacks before the change would be reflected
+	# in calls to their is_channel_subscribed_to() methods.
+	def _client_sub_callback(self, client, eventType, channel):
+		do_callback = False
+		self._lock.acquire()
+		if eventType == 'sub':
+			# check if no clients were subscribed yet
+			if not self._is_subscribed(channel):
+				do_callback = True
+		elif eventType == 'unsub':
+			# check if this was the only client with a subscription:
+			if not self._is_subscribed(channel, skip_client=client):
+				do_callback = True
+		self._lock.release()
+		if do_callback and self._sub_callback:
+			self._sub_callback(eventType, channel)
+
+	def _is_subscribed(self, channel, skip_client=None):
+		if (self._zmq_pub_controller and
+				(skip_client is None or
+				self._zmq_pub_controller != skip_client) and
+				self._zmq_pub_controller.is_channel_subscribed_to(channel)):
+			return True
 		for client in self.clients:
-			if client._zmq_pub_controller:
-				if chan in client._zmq_pub_controller.subscriptions:
-					executeCallback = False
-					break
-		if (executeCallback and
-				chan not in self._zmq_pub_controller.subscriptions):
-			self._sub_callback(eventType, chan)
+			if skip_client is not None and client == skip_client:
+				continue
+			if (getattr(client, 'sub_monitor', None) and
+					client.sub_monitor.is_channel_subscribed_to(channel)):
+				return True
+			if (getattr(client, '_pub_controller', None) and
+					client._pub_controller.is_channel_subscribed_to(channel)):
+				return True
+		return False
 
 	# An internal method for verifying that the PubControl instance has
 	# not been closed via the close() method. If it has then an error
