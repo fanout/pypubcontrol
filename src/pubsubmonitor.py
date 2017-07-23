@@ -66,7 +66,7 @@ class PubSubMonitor(object):
 		self._lock = threading.Lock()
 		self._requests_session = requests.session()
 		self._stream_response = None
-		self._channels = []
+		self._channels = set()
 		self._last_cursor = None
 		self._closed = False
 		self._historical_fetch_thread_result = False
@@ -298,29 +298,40 @@ class PubSubMonitor(object):
 		logger.debug('unsubbing and clearing channels')
 		if self._callback:
 			for channel in self._channels:
-				self._callback('unsub', channel)
+				try:
+					self._callback('unsub', channel)
+				except Exception:
+					logger.exception('error calling callback')
 		self._lock.acquire()
-		self._channels = []
+		self._channels.clear()
 		self._last_cursor = None
 		self._lock.release()
 
 	# Parse the specified items by updating the internal list and calling callbacks.
 	def _parse_items(self, items):
-		self._lock.acquire()
 		for item in items:
 			if (item['state'] == 'subscribed' and
 					item['channel'] not in self._channels):
-				self._channels.append(item['channel'])
 				logger.debug('added %s' % item['channel'])
 				if self._callback:
-					self._callback('sub', item['channel'])
+					try:
+						self._callback('sub', item['channel'])
+					except Exception:
+						logger.exception('error calling callback')
+				self._lock.acquire()
+				self._channels.add(item['channel'])
+				self._lock.release()
 			elif (item['state'] == 'unsubscribed' and
 					item['channel'] in self._channels):
-				self._channels.remove(item['channel'])
 				logger.debug('removed %s' % item['channel'])
 				if self._callback:
-					self._callback('unsub', item['channel'])
-		self._lock.release()
+					try:
+						self._callback('unsub', item['channel'])
+					except Exception:
+						logger.exception('error calling callback')
+				self._lock.acquire()
+				self._channels.remove(item['channel'])
+				self._lock.release()
 
 	# Parse the specified cursor.
 	@staticmethod
