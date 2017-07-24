@@ -106,6 +106,9 @@ class ZmqPubControllerTestClass():
 	def stop(self):
 		self.stop_called = True
 
+	def is_channel_subscribed_to(self, channel):
+		return (channel in self.subscriptions)
+
 class TestPubControl(unittest.TestCase):
 	def test_close_pubcontrols(self):
 		pubcontroltest._zmqpubcontrols = list()
@@ -268,19 +271,19 @@ class TestPubControl(unittest.TestCase):
 		pc._sub_callback = self.sub_callback_for_testing
 		pc._zmq_pub_controller = ZmqPubControllerTestClass()
 		self.clear_sub_callback_for_testing()
-		pc._pub_controller_callback('event_type', 'chan')
+		pc._pub_controller_callback('sub', 'chan')
 		self.assertTrue(self.sub_callback_executed)
 		self.assertEqual(self.sub_chan, 'chan')
-		self.assertEqual(self.sub_event_type, 'event_type')
+		self.assertEqual(self.sub_event_type, 'sub')
 		self.clear_sub_callback_for_testing()
 		pc._zmq_pub_controller.subscriptions.append('chan')
-		pc._pub_controller_callback('event_type', 'chan')
+		pc._pub_controller_callback('sub', 'chan')
 		self.assertFalse(self.sub_callback_executed)
 		client = ClientTestClass()
-		client._zmq_pub_controller = ZmqPubControllerTestClass()
-		client._zmq_pub_controller.subscriptions.append('chan2')
+		client._pub_controller = ZmqPubControllerTestClass()
+		client._pub_controller.subscriptions.append('chan')
 		pc.add_client(client)
-		pc._pub_controller_callback('event_type', 'chan2')
+		pc._pub_controller_callback('sub', 'chan')
 		self.assertFalse(self.sub_callback_executed)
 
 	def sub_callback_for_testing(self, event_type, chan):
