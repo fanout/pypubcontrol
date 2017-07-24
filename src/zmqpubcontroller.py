@@ -129,7 +129,7 @@ class ZmqPubController(object):
 				if is_python3:
 					at = part.find(0)
 					channel = part[:at]
-					content = part[at + 1]
+					content = part[at + 1:]
 				else:
 					channel, content = part.split('\x00', 1)
 				self._pub_sock.send_multipart([channel, content])
