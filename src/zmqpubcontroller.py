@@ -7,7 +7,7 @@
 
 import threading
 import logging
-from .utilities import _verify_zmq, _ensure_utf8
+from .utilities import is_python3, _verify_zmq, _ensure_utf8
 
 logger = logging.getLogger(__name__)
 
@@ -48,18 +48,18 @@ class ZmqPubController(object):
 	# A method for connecting to the specified PUB URI by sending the 'connect'
 	# message via the command control socket.
 	def connect(self, uri):
-		self._command_control_sock.send(_ensure_utf8('\x00') + uri)
+		self._command_control_sock.send(_ensure_utf8('\x00') + _ensure_utf8(uri))
 
 	# A method for disconnecting from the specified PUB URI by sending the
 	# 'disconnect' message via the command control socket.
 	def disconnect(self, uri):
-		self._command_control_sock.send(_ensure_utf8('\x01') + uri)
+		self._command_control_sock.send(_ensure_utf8('\x01') + _ensure_utf8(uri))
 
 	# A method for sending the specified data to the PUB socket by sending the
 	# 'publish' message via the command control socket.
 	def publish(self, channel, content):
-		self._command_control_sock.send(_ensure_utf8('\x02') + channel +
-				_ensure_utf8('\x00') + content)
+		self._command_control_sock.send(_ensure_utf8('\x02') + _ensure_utf8(channel) +
+				_ensure_utf8('\x00') + _ensure_utf8(content))
 
 	# A method for stopping the monitoring done by this instance and closing
 	# all sockets by sending the 'stop' message via the command control socket.
@@ -82,7 +82,7 @@ class ZmqPubController(object):
 		self._poller = zmq.Poller()
 		self._setup_monitor_control_socket()
 		self._setup_pub_socket()
-		while True:			
+		while True:
 			if self._stop_monitoring:
 				self._pub_sock.close()
 				self._monitor_control_sock.close()
@@ -116,15 +116,24 @@ class ZmqPubController(object):
 	def _process_control_sock_messages(self, socks):
 		if dict(socks).get(self._monitor_control_sock) == zmq.POLLIN:
 			m = self._monitor_control_sock.recv()
-			mtype = m[0]
-			if mtype == '\x00':
+			if is_python3:
+				mtype = m[0]
+			else:
+				mtype = ord(m[0])
+			if mtype == 0x00:
 				self._pub_sock.connect(m[1:])
-			elif mtype == '\x01':
+			elif mtype == 0x01:
 				self._pub_sock.disconnect(m[1:])
-			elif mtype == '\x02':
-				channel, content = m[1:].split('\x00', 1)
+			elif mtype == 0x02:
+				part = m[1:]
+				if is_python3:
+					at = part.find(0)
+					channel = part[:at]
+					content = part[at + 1]
+				else:
+					channel, content = part.split('\x00', 1)
 				self._pub_sock.send_multipart([channel, content])
-			elif mtype == '\x03':
+			elif mtype == 0x03:
 				self._stop_monitoring = True
 
 	# An internal method for processing the pub socket messages. A subscribe
@@ -135,9 +144,21 @@ class ZmqPubController(object):
 	def _process_pub_sock_messages(self, socks):
 		if dict(socks).get(self._pub_sock) == zmq.POLLIN:
 			m = self._pub_sock.recv()
-			mtype = m[0]
-			item = m[1:]
-			if mtype == '\x01':
+			if is_python3:
+				mtype = m[0]
+				item = m[1:]
+				try:
+					item = item.decode('utf-8')
+				except UnicodeDecodeError:
+					logger.warning('ignoring non-utf8 channel')
+					return
+			else:
+				mtype = ord(m[0])
+				item = m[1:]
+
+			logger.debug('got pub packet: %d [%s]' % (mtype, item))
+
+			if mtype == 0x01:
 				if item not in self.subscriptions:
 					if self._callback:
 						try:
@@ -147,7 +168,7 @@ class ZmqPubController(object):
 					self._lock.acquire()
 					self.subscriptions.add(item)
 					self._lock.release()
-			elif mtype == '\x00':
+			elif mtype == 0x00:
 				if item in self.subscriptions:
 					if self._callback:
 						try:
