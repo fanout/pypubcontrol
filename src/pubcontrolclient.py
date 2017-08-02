@@ -7,6 +7,7 @@
 
 import sys
 import json
+import copy
 from base64 import b64encode
 import threading
 from collections import deque
@@ -144,6 +145,20 @@ class PubControlClient(object):
 		self.lock.release()
 		self.wait_all_sent()
 
+	def http_call(self, endpoint, data, headers={}):
+		uri = self.uri + endpoint
+
+		send_headers = copy.deepcopy(headers)
+
+		auth_header = self._gen_auth_header()
+		if auth_header:
+			send_headers['Authorization'] = auth_header
+
+		try:
+			return self._make_http_request(uri, data, send_headers)
+		except Exception as e:
+			raise ValueError('failed during http call: ' + str(e))
+
 	# An internal method for verifying that the PubControlClient instance
 	# has not been closed via the close() method. If it has then an error
 	# is raised.
@@ -213,12 +228,13 @@ class PubControlClient(object):
 
 	# An internal method for making an HTTP request to the specified URI
 	# with the specified content and headers.
-	def _make_http_request(self, uri, content_raw, headers):
+	def _make_http_request(self, uri, data, headers):
 		if sys.version_info >= (2, 7, 9) or (ndg and ndg.httpsclient):
-			res = self.requests_session.post(uri, headers=headers, data=content_raw)
+			res = self.requests_session.post(uri, headers=headers, data=data)
 		else:
-			res = self.requests_session.post(uri, headers=headers, data=content_raw, verify=False)
+			res = self.requests_session.post(uri, headers=headers, data=data, verify=False)
 		self._verify_status_code(res.status_code, res.text)
+		return (res.status_code, res.headers, res.text)
 
 	# An internal method for ensuring a successful status code is returned
 	# from the server.

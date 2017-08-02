@@ -200,6 +200,18 @@ class PubControl(object):
 		self._verify_not_closed()
 		self.wait_all_sent()
 
+	# return dict of client, status tuple
+	def http_call(self, endpoint, data, headers={}):
+		out = {}
+		for client in self.clients:
+			if hasattr(client, 'http_call'):
+				try:
+					ret = client.http_call(endpoint, data, headers)
+				except Exception as e:
+					ret = e
+				out[client] = ret
+		return out
+
 	# An internal method used as a callback for discovery within the ZMQ clients.
 	# If a PUB URI was discovered then it is connected to via the ZmqPubController.
 	def _discovery_callback(self, push_uri, pub_uri, require_subscribers):
