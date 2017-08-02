@@ -200,7 +200,7 @@ class PubControl(object):
 		self._verify_not_closed()
 		self.wait_all_sent()
 
-	# return dict of client, status tuple
+	# return dict of client, result tuple
 	def http_call(self, endpoint, data, headers={}):
 		out = {}
 		for client in self.clients:
@@ -208,7 +208,7 @@ class PubControl(object):
 				try:
 					ret = client.http_call(endpoint, data, headers)
 				except Exception as e:
-					ret = e
+					ret = (e,)
 				out[client] = ret
 		return out
 
