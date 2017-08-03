@@ -17,7 +17,7 @@ class Item(object):
 
 	# The initialize method can accept either a single Format implementation
 	# instance or an array of Format implementation instances. Optionally
-	# specify an ID, previous ID and/or metadata values to be sent as part
+	# specify an ID, previous ID, and/or metadata values to be sent as part
 	# of the message published to the client.
 	def __init__(self, formats, id=None, prev_id=None, meta={}):
 		self.id = id

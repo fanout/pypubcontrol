@@ -145,6 +145,9 @@ class PubControlClient(object):
 		self.lock.release()
 		self.wait_all_sent()
 
+	# This method makes an HTTP request to an endpoint relative to the base
+	# URI, using configured authentication. Returns a tuple of
+	# (status code, headers, body).
 	def http_call(self, endpoint, data, headers={}):
 		uri = self.uri + endpoint
 

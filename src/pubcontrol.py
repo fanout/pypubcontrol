@@ -200,7 +200,9 @@ class PubControl(object):
 		self._verify_not_closed()
 		self.wait_all_sent()
 
-	# return dict of client, result tuple
+	# This method makes an HTTP request using each configured
+	# PubControlClient. Returns a dict of (client, result), where each result
+	# is a tuple of (status code, headers, body) or (Exception).
 	def http_call(self, endpoint, data, headers={}):
 		out = {}
 		for client in self.clients:
