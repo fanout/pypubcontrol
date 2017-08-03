@@ -13,7 +13,7 @@ setup(
 	version='2.4.1',
 	description='EPCP library',
 	author='Justin Karneges',
-	author_email='justin@affinix.com',
+	author_email='justin@fanout.io',
 	url='https://github.com/fanout/pypubcontrol',
 	license='MIT',
 	package_dir={'pubcontrol': 'src'},
