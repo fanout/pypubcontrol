@@ -28,26 +28,6 @@ try:
 except:
 	from httplib import IncompleteRead
 
-try:
-	import ndg.httpsclient
-except ImportError:
-	ndg = None
-
-# TODO: Remove in the future when most users have Python >= 2.7.9.
-try:
-	import urllib3
-except ImportError:
-	try:
-		from requests.packages import urllib3
-	except ImportError:
-		pass
-try:
-	urllib3.disable_warnings()
-except NameError:
-	pass
-except AttributeError:
-	pass
-
 # The PubSubMonitor class monitors subscriptions to channels via an HTTP interface.
 class PubSubMonitor(object):
 
@@ -118,14 +98,9 @@ class PubSubMonitor(object):
 					headers = {}
 					headers['Authorization'] = _gen_auth_jwt_header(
 							self._auth_jwt_claim, self._auth_jwt_key)
-					if sys.version_info >= (2, 7, 9) or (ndg and ndg.httpsclient):
-						self._stream_response = self._requests_session.get(
-								self._stream_uri, headers=headers, stream=True,
-								timeout=timeout)
-					else:
-						self._stream_response = self._requests_session.get(
-								self._stream_uri, headers=headers, verify=False,
-								stream=True, timeout=timeout)
+					self._stream_response = self._requests_session.get(
+							self._stream_uri, headers=headers, stream=True,
+							timeout=timeout)
 					# No concern about a race condition here since there's 5 full
 					# seconds between the .get() method above returning and the
 					# timeout exception being thrown. The lines below are guaranteed
@@ -256,12 +231,8 @@ class PubSubMonitor(object):
 						headers = {}
 						headers['Authorization'] = _gen_auth_jwt_header(
 								self._auth_jwt_claim, self._auth_jwt_key)
-						if sys.version_info >= (2, 7, 9) or (ndg and ndg.httpsclient):
-							res = self._requests_session.get(uri, headers=headers,
-									timeout=30)
-						else:
-							res = self._requests_session.get(uri, headers=headers,
-									verify=False, timeout=30)
+						res = self._requests_session.get(uri, headers=headers,
+								timeout=30)
 						if (res.status_code >= 200 and
 								res.status_code < 300):
 							retry_connection = False

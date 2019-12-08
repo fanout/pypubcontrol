@@ -15,26 +15,6 @@ import requests
 from .pubsubmonitor import PubSubMonitor
 from .utilities import _gen_auth_jwt_header
 
-try:
-	import ndg.httpsclient
-except ImportError:
-	ndg = None
-
-# TODO: Remove in the future when most users have Python >= 2.7.9.
-try:
-	import urllib3
-except ImportError:
-	try:
-		from requests.packages import urllib3
-	except ImportError:
-		pass
-try:
-	urllib3.disable_warnings()
-except NameError:
-	pass
-except AttributeError:
-	pass
-
 # The PubControlClient class allows consumers to publish either synchronously
 # or asynchronously to an endpoint of their choice. The consumer wraps a Format
 # class instance in an Item class instance and passes that to the publish
@@ -232,10 +212,7 @@ class PubControlClient(object):
 	# An internal method for making an HTTP request to the specified URI
 	# with the specified content and headers.
 	def _make_http_request(self, uri, data, headers):
-		if sys.version_info >= (2, 7, 9) or (ndg and ndg.httpsclient):
-			res = self.requests_session.post(uri, headers=headers, data=data)
-		else:
-			res = self.requests_session.post(uri, headers=headers, data=data, verify=False)
+		res = self.requests_session.post(uri, headers=headers, data=data)
 		self._verify_status_code(res.status_code, res.text)
 		return (res.status_code, res.headers, res.text)
 
