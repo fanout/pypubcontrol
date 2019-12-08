@@ -12,6 +12,8 @@ from base64 import b64encode
 import threading
 from collections import deque
 import requests
+from requests.packages.urllib3.util import Retry
+from requests.adapters import HTTPAdapter
 from .pubsubmonitor import PubSubMonitor
 from .utilities import _gen_auth_jwt_header
 
@@ -38,9 +40,22 @@ class PubControlClient(object):
 		self.auth_basic_pass = None
 		self.auth_jwt_claim = auth_jwt_claim
 		self.auth_jwt_key = auth_jwt_key
-		self.requests_session = requests.session()
 		self.sub_monitor = None
 		self.closed = False
+
+		retry = Retry(
+			total=1,
+			backoff_factor=0.5,
+			status_forcelist=[500, 502, 503, 504],
+			method_whitelist=frozenset(['GET', 'POST'])
+		)
+
+		adapter = HTTPAdapter(max_retries=retry)
+
+		self.requests_session = requests.session()
+		self.requests_session.mount('http://', adapter)
+		self.requests_session.mount('https://', adapter)
+
 		if require_subscribers:
 			self.sub_monitor = PubSubMonitor(uri, auth_jwt_claim, auth_jwt_key, sub_callback)
 

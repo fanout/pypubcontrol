@@ -4,6 +4,7 @@ import copy
 from base64 import b64encode, b64decode
 import threading
 import time
+import socket
 import json
 import jwt
 
@@ -16,6 +17,67 @@ sys.path.append('../')
 from src.pubcontrolclient import PubControlClient
 from src.item import Item
 from src.format import Format
+
+class TestServer(object):
+	def __init__(self):
+		cond = threading.Condition()
+		result = {}
+		self.thread = threading.Thread(target=TestServer.server, args=(cond, result))
+		self.thread.daemon = True
+		cond.acquire()
+		self.thread.start()
+		cond.wait()
+		self.port = result['port']
+		cond.release()
+
+	def wait_finish(self):
+		self.thread.join()
+
+	@staticmethod
+	def server(cond, result):
+		s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		s.settimeout(1)
+		s.bind(('', 0))
+		s.listen(1)
+
+		cond.acquire()
+		result['port'] = s.getsockname()[1]
+		cond.notify()
+		cond.release()
+
+		# close immediately
+		conn, _ = s.accept()
+		conn.close()
+
+		# respond success
+		conn, _ = s.accept()
+		conn.recv(1024)
+		conn.sendall('HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 3\r\n\r\nOk\n')
+		conn.close()
+
+		# respond with 500
+		conn, _ = s.accept()
+		conn.recv(1024)
+		conn.sendall('HTTP/1.0 500 Internal Server Error\r\nContent-Type: text/plain\r\nContent-Length: 6\r\n\r\nError\n')
+		conn.close()
+
+		# respond success
+		conn, _ = s.accept()
+		conn.recv(1024)
+		conn.sendall('HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 3\r\n\r\nOk\n')
+		conn.close()
+
+		# respond with 500
+		conn, _ = s.accept()
+		conn.recv(1024)
+		conn.sendall('HTTP/1.0 500 Internal Server Error\r\nContent-Type: text/plain\r\nContent-Length: 6\r\n\r\nError\n')
+		conn.close()
+
+		# respond with 500
+		conn, _ = s.accept()
+		conn.recv(1024)
+		conn.sendall('HTTP/1.0 500 Internal Server Error\r\nContent-Type: text/plain\r\nContent-Length: 6\r\n\r\nError\n')
+		conn.close()
 
 class TestFormatSubClass(Format):
 	def name(self):
@@ -332,6 +394,24 @@ class TestPubControlClient(unittest.TestCase):
 			pcc._verify_status_code(199, '')
 		with self.assertRaises(ValueError):
 			pcc._verify_status_code(300, '')
+
+	def test_retries(self):
+		# this test assumes total retries is 1 (i.e. 2 attempts)
+
+		server = TestServer()
+		pcc = PubControlClient('http://127.0.0.1:{}'.format(server.port))
+
+		# first request will fail, second will succeed
+		pcc.publish('test', Item(TestFormatSubClass()), blocking=True)
+
+		# first request will fail, second will succeed
+		pcc.publish('test', Item(TestFormatSubClass()), blocking=True)
+
+		# first and second requests will fail
+		with self.assertRaises(ValueError):
+			pcc.publish('test', Item(TestFormatSubClass()), blocking=True)
+
+		server.wait_finish()
 
 if __name__ == '__main__':
 		unittest.main()
