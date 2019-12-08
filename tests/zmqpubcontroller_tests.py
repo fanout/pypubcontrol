@@ -176,4 +176,4 @@ class TestZmqPubController(unittest.TestCase):
 		self.assertEqual(socket.send_data, '\x03')
 
 if __name__ == '__main__':
-		unittest.main()
+	unittest.main()

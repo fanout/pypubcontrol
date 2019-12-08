@@ -635,4 +635,4 @@ class TestZmqPubControlClient(unittest.TestCase):
 				None), 'tcp://localhost:5000')
 
 if __name__ == '__main__':
-		unittest.main()
+	unittest.main()

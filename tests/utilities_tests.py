@@ -52,4 +52,4 @@ class TestUtilities(unittest.TestCase):
 		utilities._ensure_unicode(data)
 
 if __name__ == '__main__':
-		unittest.main()
+	unittest.main()

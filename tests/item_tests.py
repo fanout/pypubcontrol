@@ -79,4 +79,4 @@ class TestItem(unittest.TestCase):
 		self.assertTrue(is_encoded)
 
 if __name__ == '__main__':
-		unittest.main()
+	unittest.main()

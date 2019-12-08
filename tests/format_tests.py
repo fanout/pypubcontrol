@@ -21,4 +21,4 @@ class TestFormat(unittest.TestCase):
 		self.assertEqual(subclass.export(), 'test_export')
 
 if __name__ == '__main__':
-		unittest.main()
+	unittest.main()

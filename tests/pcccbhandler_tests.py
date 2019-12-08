@@ -55,4 +55,4 @@ class TestPubControlClientCallbackHandler(unittest.TestCase):
 		self.assertTrue(self.callback_error == 'failure')
 
 if __name__ == '__main__':
-		unittest.main()
+	unittest.main()
