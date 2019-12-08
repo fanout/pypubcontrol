@@ -5,7 +5,6 @@
 #    :copyright: (c) 2015 by Fanout, Inc.
 #    :license: MIT, see LICENSE for more details.
 
-import sys
 import requests
 import threading
 import json
