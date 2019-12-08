@@ -20,8 +20,6 @@ python setup.py install
 
 NOTE: ZMQ publishing requires the `pyzmq` and `tnetstring` (`tnetstring3` for Python 3) packages to be installed.
 
-WARNING: On Python versions prior to 2.7.9, SSL certificates are not validated by default. To enable validation for earlier versions install the `ndg-httpsclient` package.
-
 ## Sample usage
 
 ```python
