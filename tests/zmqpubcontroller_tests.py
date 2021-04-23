@@ -1,7 +1,6 @@
 import sys
 import unittest
 import time
-import threading
 import zmq
 sys.path.append('../')
 import src.zmqpubcontroller as zmqpubcontroller
@@ -53,14 +52,14 @@ class PubSocketTestClass(object):
 	def recv(self):
 		self.count += 1
 		if self.count == 1:
-			return '\x01chan'
+			return b'\x01chan'
 		if self.count == 2:
-			return '\x01chan2'
+			return b'\x01chan2'
 		if self.count == 3:
-			return '\x01chan'
+			return b'\x01chan'
 		if self.count == 4:
 			self.closed = True
-			return '\x00chan'
+			return b'\x00chan'
 
 class ControlSocketTestClass(object):
 	def __init__(self):
@@ -79,14 +78,14 @@ class ControlSocketTestClass(object):
 	def recv(self):
 		self.count += 1
 		if self.count == 1:
-			return '\x00uri2'
+			return b'\x00uri2'
 		if self.count == 2:
-			return '\x01uri3'
+			return b'\x01uri3'
 		if self.count == 3:
-			return '\x02chan\x00pub'
+			return b'\x02chan\x00pub'
 		if self.count == 4:
 			self.closed = True
-			return '\x03'
+			return b'\x03'
 
 pub_socket = PubSocketTestClass()
 control_socket = ControlSocketTestClass()
@@ -141,9 +140,9 @@ class TestZmqPubController(unittest.TestCase):
 		self.assertEqual(mon._monitor_control_sock.linger, 0)
 		self.assertEqual(mon._monitor_control_sock.close_called, True)
 		self.assertEqual(mon._pub_sock.linger, 0)
-		self.assertEqual(mon._pub_sock.connect_uri, 'uri2')
-		self.assertEqual(mon._pub_sock.disconnect_uri, 'uri3')
-		self.assertEqual(mon._pub_sock.pub_data, ['chan', 'pub'])
+		self.assertEqual(mon._pub_sock.connect_uri, b'uri2')
+		self.assertEqual(mon._pub_sock.disconnect_uri, b'uri3')
+		self.assertEqual(mon._pub_sock.pub_data, [b'chan', b'pub'])
 		self.assertEqual(mon._pub_sock.close_called, True)
 		self.assertFalse(mon._thread.isAlive())
 		self.assertEqual(len(mon.subscriptions), 1)
@@ -167,13 +166,13 @@ class TestZmqPubController(unittest.TestCase):
 		socket = CommandControlSocketTestClass()
 		mon._command_control_sock = socket
 		mon.connect('uri')
-		self.assertEqual(socket.send_data, '\x00uri')
+		self.assertEqual(socket.send_data, b'\x00uri')
 		mon.disconnect('uri')
-		self.assertEqual(socket.send_data, '\x01uri')
+		self.assertEqual(socket.send_data, b'\x01uri')
 		mon.publish('channel', 'content')
-		self.assertEqual(socket.send_data, '\x02channel\x00content')
+		self.assertEqual(socket.send_data, b'\x02channel\x00content')
 		mon.stop()
-		self.assertEqual(socket.send_data, '\x03')
+		self.assertEqual(socket.send_data, b'\x03')
 
 if __name__ == '__main__':
 	unittest.main()

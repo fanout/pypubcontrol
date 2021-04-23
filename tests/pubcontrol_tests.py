@@ -1,8 +1,6 @@
 import zmq
-import tnetstring
 import sys
 import unittest
-from base64 import b64encode, b64decode
 
 try:
 	import urllib.request as urllib2
@@ -12,7 +10,6 @@ except ImportError:
 sys.path.append('../')
 import src.pubcontrol as pubcontroltest
 from src.pubcontrol import PubControl
-from src.pubcontrolclient import PubControlClient
 from src.item import Item
 from src.format import Format
 

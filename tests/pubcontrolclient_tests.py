@@ -52,32 +52,35 @@ class TestServer(object):
 		# respond success
 		conn, _ = s.accept()
 		conn.recv(1024)
-		conn.sendall('HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 3\r\n\r\nOk\n')
+		conn.sendall(b'HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 3\r\n\r\nOk\n')
 		conn.close()
 
 		# respond with 500
 		conn, _ = s.accept()
 		conn.recv(1024)
-		conn.sendall('HTTP/1.0 500 Internal Server Error\r\nContent-Type: text/plain\r\nContent-Length: 6\r\n\r\nError\n')
+		conn.sendall(b'HTTP/1.0 500 Internal Server Error\r\nContent-Type: text/plain\r\nContent-Length: 6\r\n\r\nError\n')
 		conn.close()
 
 		# respond success
 		conn, _ = s.accept()
 		conn.recv(1024)
-		conn.sendall('HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 3\r\n\r\nOk\n')
+		conn.sendall(b'HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 3\r\n\r\nOk\n')
 		conn.close()
 
 		# respond with 500
 		conn, _ = s.accept()
 		conn.recv(1024)
-		conn.sendall('HTTP/1.0 500 Internal Server Error\r\nContent-Type: text/plain\r\nContent-Length: 6\r\n\r\nError\n')
+		conn.sendall(b'HTTP/1.0 500 Internal Server Error\r\nContent-Type: text/plain\r\nContent-Length: 6\r\n\r\nError\n')
 		conn.close()
 
 		# respond with 500
 		conn, _ = s.accept()
 		conn.recv(1024)
-		conn.sendall('HTTP/1.0 500 Internal Server Error\r\nContent-Type: text/plain\r\nContent-Length: 6\r\n\r\nError\n')
+		conn.sendall(b'HTTP/1.0 500 Internal Server Error\r\nContent-Type: text/plain\r\nContent-Length: 6\r\n\r\nError\n')
 		conn.close()
+
+		# close server
+		s.close()
 
 class TestFormatSubClass(Format):
 	def name(self):
