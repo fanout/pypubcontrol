@@ -17,6 +17,7 @@ sys.path.append('../')
 from src.pubcontrolclient import PubControlClient
 from src.item import Item
 from src.format import Format
+from src.utilities import _ensure_unicode
 
 class TestServer(object):
 	def __init__(self):
@@ -215,9 +216,8 @@ class TestPubControlClient(unittest.TestCase):
 		pcc = PubControlClient('uri')
 		pcc.set_auth_jwt({'iss': 'hello', 'exp': 1426106601},
 				b64decode('key=='))
-		self.assertEqual(pcc._gen_auth_header(), 'Bearer ' + jwt.encode(
-				{'iss': 'hello', 'exp': 1426106601},
-				b64decode('key==')).decode('utf-8'))
+		token = _ensure_unicode(jwt.encode({'iss': 'hello', 'exp': 1426106601}, b64decode('key==')))
+		self.assertEqual(pcc._gen_auth_header(), 'Bearer ' + token)
 
 	def test_gen_auth_header_none(self):
 		pcc = PubControlClient('uri')

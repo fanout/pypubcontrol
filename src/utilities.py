@@ -78,4 +78,7 @@ def _gen_auth_jwt_header(claim, key):
 		claim['exp'] = calendar.timegm(datetime.utcnow().utctimetuple()) + 3600
 	else:
 		claim = claim
-	return 'Bearer ' + jwt.encode(claim, key).decode('utf-8')
+
+	token = _ensure_unicode(jwt.encode(claim, key))
+
+	return 'Bearer ' + token

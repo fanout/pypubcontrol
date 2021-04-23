@@ -4,7 +4,7 @@ from setuptools import setup
 import sys
 
 if sys.version_info >= (3,):
-	install_requires = ['PyJWT>=1,<2','requests>=2,<3']
+	install_requires = ['PyJWT>=1,<3','requests>=2,<3']
 else:
 	install_requires = ['PyJWT>=1,<2','requests>=2,<3']
 
