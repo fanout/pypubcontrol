@@ -13,11 +13,9 @@ import urllib
 import time
 import socket
 import logging
-import pkg_resources
 from base64 import b64decode
 from ssl import SSLError
 from .utilities import _gen_auth_jwt_header, _ensure_unicode
-from distutils.version import StrictVersion
 from requests.exceptions import ConnectionError
 
 logger = logging.getLogger(__name__)
@@ -91,9 +89,6 @@ class PubSubMonitor(object):
 				try:
 					logger.debug('stream get %s' % self._stream_uri)
 					timeout = (5,60)
-					if (StrictVersion(pkg_resources.get_distribution('requests').version) <=
-							StrictVersion('2.3')):
-						timeout = 60
 					headers = {}
 					headers['Authorization'] = _gen_auth_jwt_header(
 							self._auth_jwt_claim, self._auth_jwt_key)
