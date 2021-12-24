@@ -6,7 +6,7 @@
 #    :license: MIT, see LICENSE for more details.
 
 import sys
-import collections
+import collections.abc
 import jwt
 import calendar
 import copy
@@ -44,9 +44,9 @@ def _ensure_utf8(value):
 			return value.encode('utf-8')
 		elif isinstance(value, str):
 			return value
-	if isinstance(value, collections.Mapping):
+	if isinstance(value, collections.abc.Mapping):
 		return dict(map(_ensure_utf8, value.items()))
-	elif isinstance(value, collections.Iterable):
+	elif isinstance(value, collections.abc.Iterable):
 		return type(value)(map(_ensure_utf8, value))
 	return value
 
@@ -64,9 +64,9 @@ def _ensure_unicode(value):
 			return value.decode('utf-8')
 		elif isinstance(value, unicode):
 			return value
-	if isinstance(value, collections.Mapping):
+	if isinstance(value, collections.abc.Mapping):
 		return dict(map(_ensure_unicode, value.items()))
-	elif isinstance(value, collections.Iterable):
+	elif isinstance(value, collections.abc.Iterable):
 		return type(value)(map(_ensure_unicode, value))
 	return value
 
