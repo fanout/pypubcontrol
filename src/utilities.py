@@ -6,7 +6,6 @@
 #    :license: MIT, see LICENSE for more details.
 
 import sys
-import collections.abc
 import jwt
 import calendar
 import copy
@@ -23,6 +22,11 @@ except ImportError:
 	tnetstring = None
 
 is_python3 = sys.version_info >= (3,)
+
+if is_python3:
+	import collections.abc as collections
+else:
+	import collections
 
 # An internal method to verify that the zmq and tnetstring packages are
 # available. If not an exception is raised.
@@ -44,9 +48,9 @@ def _ensure_utf8(value):
 			return value.encode('utf-8')
 		elif isinstance(value, str):
 			return value
-	if isinstance(value, collections.abc.Mapping):
+	if isinstance(value, collections.Mapping):
 		return dict(map(_ensure_utf8, value.items()))
-	elif isinstance(value, collections.abc.Iterable):
+	elif isinstance(value, collections.Iterable):
 		return type(value)(map(_ensure_utf8, value))
 	return value
 
@@ -64,9 +68,9 @@ def _ensure_unicode(value):
 			return value.decode('utf-8')
 		elif isinstance(value, unicode):
 			return value
-	if isinstance(value, collections.abc.Mapping):
+	if isinstance(value, collections.Mapping):
 		return dict(map(_ensure_unicode, value.items()))
-	elif isinstance(value, collections.abc.Iterable):
+	elif isinstance(value, collections.Iterable):
 		return type(value)(map(_ensure_unicode, value))
 	return value
 
