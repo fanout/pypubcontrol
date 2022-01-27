@@ -6,7 +6,6 @@
 #    :license: MIT, see LICENSE for more details.
 
 import sys
-import collections
 import jwt
 import calendar
 import copy
@@ -23,6 +22,11 @@ except ImportError:
 	tnetstring = None
 
 is_python3 = sys.version_info >= (3,)
+
+if is_python3:
+	import collections.abc as collections
+else:
+	import collections
 
 # An internal method to verify that the zmq and tnetstring packages are
 # available. If not an exception is raised.
