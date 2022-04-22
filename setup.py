@@ -12,7 +12,11 @@ setup(
 	license='MIT',
 	package_dir={'pubcontrol': 'src'},
 	packages=['pubcontrol'],
-	install_requires=['PyJWT>=1,<3', 'requests>=2.4,<3'],
+	install_requires=[
+		'PyJWT>=1,<2;python_version<"3.0"',
+		'PyJWT>=1,<3;python_version>="3.0"',
+		'requests>=2.4,<3'
+	],
 	classifiers=[
 		'Topic :: Utilities',
 		'License :: OSI Approved :: MIT License'
