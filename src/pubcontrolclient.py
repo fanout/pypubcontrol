@@ -46,7 +46,7 @@ class PubControlClient(object):
 			total=1,
 			backoff_factor=0.5,
 			status_forcelist=[500, 502, 503, 504],
-			method_whitelist=frozenset(['GET', 'POST'])
+			allowed_methods=frozenset(['GET', 'POST'])
 		)
 
 		adapter = HTTPAdapter(max_retries=retry)
