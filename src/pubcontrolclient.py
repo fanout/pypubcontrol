@@ -29,7 +29,7 @@ class PubControlClient(object):
 
 	# Initialize this class with a URL representing the publishing endpoint.
 	def __init__(self, uri, auth_jwt_claim=None,
-			auth_jwt_key=None, require_subscribers=False, sub_callback=None):
+			auth_jwt_key=None, require_subscribers=False, sub_callback=None, auth_bearer=None):
 		self.uri = uri
 		self.lock = threading.Lock()
 		self.thread = None
@@ -39,6 +39,7 @@ class PubControlClient(object):
 		self.auth_basic_pass = None
 		self.auth_jwt_claim = auth_jwt_claim
 		self.auth_jwt_key = auth_jwt_key
+		self.auth_bearer = auth_bearer
 		self.sub_monitor = None
 		self.closed = False
 
@@ -56,7 +57,7 @@ class PubControlClient(object):
 		self.requests_session.mount('https://', adapter)
 
 		if require_subscribers:
-			self.sub_monitor = PubSubMonitor(uri, auth_jwt_claim, auth_jwt_key, sub_callback)
+			self.sub_monitor = PubSubMonitor(uri, auth_jwt_claim, auth_jwt_key, sub_callback, auth_bearer)
 
 	# Call this method and pass a username and password to use basic
 	# authentication with the configured endpoint.
@@ -65,6 +66,14 @@ class PubControlClient(object):
 		self.lock.acquire()
 		self.auth_basic_user = username
 		self.auth_basic_pass = password
+		self.lock.release()
+
+	# Call this method to use bearer authentication with the
+	# configured endpoint.
+	def set_auth_bearer(self, value):
+		self._verify_notclosed()
+		self.lock.acquire()
+		self.auth_bearer = value
 		self.lock.release()
 
 	# Call this method and pass a claim and key to use JWT authentication
@@ -170,6 +179,8 @@ class PubControlClient(object):
 	def _gen_auth_header(self):
 		if self.auth_basic_user:
 			return 'Basic ' + str(b64encode(('%s:%s' % (self.auth_basic_user, self.auth_basic_pass)).encode('ascii')))
+		elif self.auth_bearer:
+			return 'Bearer ' + self.auth_bearer
 		elif self.auth_jwt_claim:
 			return _gen_auth_jwt_header(self.auth_jwt_claim, self.auth_jwt_key)
 		else:

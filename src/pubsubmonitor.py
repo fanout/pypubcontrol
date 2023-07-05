@@ -30,13 +30,15 @@ class PubSubMonitor(object):
 
 	# Initialize with base stream URI, JWT auth info, and callback used for indicating
 	# when a subscription event occurs.
-	def __init__(self, base_stream_uri, auth_jwt_claim=None, auth_jwt_key=None, callback=None):
+	def __init__(self, base_stream_uri, auth_jwt_claim=None, auth_jwt_key=None, callback=None, auth_bearer=None):
 		if base_stream_uri[-1:] != '/':
 			base_stream_uri += '/'
 		self._stream_uri = base_stream_uri + 'subscriptions/stream/'
 		self._items_uri = base_stream_uri + 'subscriptions/items/'
 		self._auth_jwt_claim = None
-		if auth_jwt_claim:
+		if auth_bearer:
+			self._auth_bearer = auth_bearer
+		elif auth_jwt_claim:
 			self._auth_jwt_claim = copy.deepcopy(auth_jwt_claim)
 			self._auth_jwt_key = auth_jwt_key
 		self._callback = callback
@@ -90,8 +92,11 @@ class PubSubMonitor(object):
 					logger.debug('stream get %s' % self._stream_uri)
 					timeout = (5,60)
 					headers = {}
-					headers['Authorization'] = _gen_auth_jwt_header(
-							self._auth_jwt_claim, self._auth_jwt_key)
+					if self._auth_bearer:
+						headers['Authorization'] = 'Bearer ' + self._auth_bearer
+					else:
+						headers['Authorization'] = _gen_auth_jwt_header(
+								self._auth_jwt_claim, self._auth_jwt_key)
 					self._stream_response = self._requests_session.get(
 							self._stream_uri, headers=headers, stream=True,
 							timeout=timeout)
@@ -223,8 +228,11 @@ class PubSubMonitor(object):
 						else:
 							logger.debug('history get %s' % uri)
 						headers = {}
-						headers['Authorization'] = _gen_auth_jwt_header(
-								self._auth_jwt_claim, self._auth_jwt_key)
+						if self._auth_bearer:
+							headers['Authorization'] = 'Bearer ' + self._auth_bearer
+						else:
+							headers['Authorization'] = _gen_auth_jwt_header(
+									self._auth_jwt_claim, self._auth_jwt_key)
 						res = self._requests_session.get(uri, headers=headers,
 								timeout=30)
 						if (res.status_code >= 200 and

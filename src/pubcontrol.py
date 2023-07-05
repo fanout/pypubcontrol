@@ -120,15 +120,19 @@ class PubControl(object):
 				if 'uri' in entry:
 					claim = None
 					key = None
-					if 'iss' in entry:
-						claim = {'iss': entry['iss']}
-						key = entry['key']
+					bearer = None
+					if 'key' in entry:
+						if 'iss' in entry:
+							claim = {'iss': entry['iss']}
+							key = entry['key']
+						else:
+							bearer = entry['key']
 					handler = PubControl.SubCallbackHandler(self._client_sub_callback)
 					try:
 						handler.lock.acquire()
 						client = PubControlClient(entry['uri'],
 								claim, key, require_subscribers,
-								handler.handle)
+								handler.handle, auth_bearer=bearer)
 						handler.client = client
 					finally:
 						handler.lock.release()
